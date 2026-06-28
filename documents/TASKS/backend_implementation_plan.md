@@ -270,8 +270,10 @@ lib/core/services/chat_service.dart
 
 ### 8.1 Packages to add
 ```yaml
-geolocator: ^13.x.x
-mapbox_maps_flutter: ^2.x.x  # already in project
+geolocator: ^14.0.0
+flutter_map: ^8.0.0      # OpenStreetMap (100% free, no credit card required)
+latlong2: ^0.9.1         # Coordinate utilities
+url_launcher: ^6.3.1     # Open external map navigation
 ```
 
 ### 8.2 Files to create
@@ -280,21 +282,21 @@ lib/core/services/location_service.dart
 ```
 
 ### 8.3 Location publishing (Tourist device)
-- [ ] `LocationService.startPublishing(sessionId, touristId)` → periodic Firestore writes
-- [ ] Writes to `/tour_sessions/{id}/locations/{touristId}` every 15 seconds
-- [ ] Location doc: `{ lat, lng, accuracy, updatedAt }`
+- [x] `LocationService.startPublishingLocation(...)` → periodic Firestore writes
+- [x] Writes to `/tour_sessions/{id}/locations/{touristId}` every 15 seconds
+- [x] Location doc: `{ latitude, longitude, accuracy, ringCommand, updatedAt }`
 
 ### 8.4 Location watching (Guide)
-- [ ] `LocationService.watchAllLocations(sessionId)` → stream of all tourist locations
-- [ ] Update `TourGuideMapScreen` to render real markers from stream
+- [x] `LocationService.watchAllLocations(sessionId)` → stream of all tourist locations
+- [x] Update `TourGuideMapScreen` to render real markers from stream
 
 ### 8.5 Boundary Check (1 km)
-- [ ] Calculate distance from session center using `Geolocator.distanceBetween()`
-- [ ] If `distance > 1000m` → trigger alert (Step 12 handles push notification)
+- [x] Calculate distance from session center using `Geolocator.distanceBetween()`
+- [x] If `distance > 1000m` → trigger warning banner, turn marker red
 
 ### 8.6 Ring Tourist (US-15)
-- [ ] Write `{ ringCommand: true }` to tourist's location doc
-- [ ] Tourist device watches doc → plays sound when `ringCommand == true`
+- [x] Write `{ ringCommand: true }` to tourist's location doc
+- [x] Tourist device watches doc → triggers device vibration when `ringCommand == true`
 
 ---
 
@@ -332,7 +334,7 @@ lib/core/services/sos_service.dart
 
 ## STEP 10 — Weather Integration (US-17)
 
-**Goal:** Replace mock weather data with real OpenWeatherMap API.
+**Goal:** Replace mock weather data with real OpenWeatherMap or Open-Meteo API.
 
 ### 10.1 Packages to add
 ```yaml
@@ -345,11 +347,10 @@ lib/core/services/weather_service.dart
 ```
 
 ### 10.3 API Call
-- [ ] `WeatherService.getCurrentWeather(lat, lng)` → GET `api.openweathermap.org/data/2.5/weather`
-- [ ] `WeatherService.getForecast(lat, lng)` → GET `.../forecast` (5-day/3-hour)
-- [ ] Map API response to weather model
-- [ ] Replace hardcoded weather data in `weather_screen.dart` with real data
-- [ ] Store API key securely using `flutter_dotenv` package
+- [x] `WeatherService.fetchWeather(...)` → GET `api.open-meteo.com` (100% free, keyless, no billing card needed)
+- [x] Map API response to weather model
+- [x] Replace hardcoded weather data in `weather_screen.dart` with real data from Open-Meteo API
+- [x] No API key needed (Open-Meteo allows public usage)
 
 ### 10.4 Weather model
 ```dart
