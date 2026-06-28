@@ -1,0 +1,27 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "tourvia-8fa8c",
+          "appId": "1:723690444111:android:f7842cfd625fac1999613a",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "tourvia-8fa8c",
+          "configurations": {
+            "android": "1:723690444111:android:f7842cfd625fac1999613a",
+            "ios": "1:723690444111:ios:edcbeb8acbeb940e99613a",
+            "web": "1:723690444111:web:a00377aceedb146599613a"
+          }
+        }
+      }
+    }
+  }
+}
