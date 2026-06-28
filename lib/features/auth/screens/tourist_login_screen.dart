@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_strings.dart';
+import '../../../core/models/tourist_session.dart';
 import '../../../core/services/access_code_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../tourist/screens/tourist_dashboard_screen.dart';
 import '../widgets/custom_text_field.dart';
@@ -282,6 +284,15 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
   }
 
   void _navigateToDashboard() {
+    // Save FCM token so the server can send push notifications to this tourist
+    final session = TouristSessionManager.current;
+    if (session != null) {
+      NotificationService.saveTokenForTourist(
+        session.sessionId,
+        session.codeDocId,
+      );
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(

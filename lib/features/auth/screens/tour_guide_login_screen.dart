@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_strings.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../tour_guide/screens/tour_guide_dashboard_screen.dart';
 import '../widgets/custom_text_field.dart';
@@ -114,6 +115,12 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
   }
 
   void _showSuccessAndNavigate() {
+    // Save FCM token so the server can send push notifications to this guide
+    final uid = AuthService.currentUser?.uid;
+    if (uid != null) {
+      NotificationService.saveTokenForUser(uid);
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
