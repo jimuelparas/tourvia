@@ -5,7 +5,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/app_colors.dart';
 import 'features/auth/screens/role_selection_screen.dart';
+import 'features/auth/screens/in_app_password_reset_screen.dart';
 import 'features/sos/screens/sos_screen.dart';
 import 'firebase_options.dart';
 
@@ -16,8 +18,12 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load environment variables (API keys)
-  await dotenv.load(fileName: '.env');
+  // Load environment variables (API keys) — gracefully skip if missing
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (_) {
+    debugPrint('Warning: .env file not found. AI features will be unavailable.');
+  }
 
   // Initialize Firebase
   await Firebase.initializeApp(
@@ -77,7 +83,24 @@ class _TourviaAppState extends State<TourviaApp> {
       title: 'Tourvia',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system,
       navigatorKey: navigatorKey,
+      onGenerateRoute: (settings) {
+        // Deep link interception for Firebase Auth password reset
+        if (settings.name != null && settings.name!.startsWith('/__/auth/action')) {
+          final uri = Uri.parse(settings.name!);
+          final mode = uri.queryParameters['mode'];
+          final oobCode = uri.queryParameters['oobCode'];
+          
+          if (mode == 'resetPassword' && oobCode != null) {
+            return MaterialPageRoute(
+              builder: (_) => InAppPasswordResetScreen(oobCode: oobCode),
+            );
+          }
+        }
+        return null; // Let Flutter handle other routes normally
+      },
       home: const RoleSelectionScreen(),
       builder: (context, child) {
         // Wrap the whole app in a foreground notification banner listener
@@ -143,11 +166,11 @@ class _FcmBannerWrapperState extends State<_FcmBannerWrapper> {
             ),
           ],
         ),
-        backgroundColor: const Color(0xFF00A9E0),
+        backgroundColor: AppColors.primary,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 6),
         margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         action: SnackBarAction(
           label: 'View',
           textColor: Colors.white,
