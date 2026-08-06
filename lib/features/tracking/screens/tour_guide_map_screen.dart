@@ -15,10 +15,7 @@ import '../../../core/services/location_service.dart';
 class TourGuideMapScreen extends StatefulWidget {
   final String sessionId;
 
-  const TourGuideMapScreen({
-    super.key,
-    this.sessionId = 'demo-session-001',
-  });
+  const TourGuideMapScreen({super.key, this.sessionId = 'demo-session-001'});
 
   @override
   State<TourGuideMapScreen> createState() => _TourGuideMapScreenState();
@@ -84,31 +81,35 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
       isGuide: true,
     );
 
-    _localLocSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
-      ),
-    ).listen((pos) {
-      if (mounted) {
-        setState(() => _guidePosition = LatLng(pos.latitude, pos.longitude));
-      }
-    });
+    _localLocSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          ),
+        ).listen((pos) {
+          if (mounted) {
+            setState(
+              () => _guidePosition = LatLng(pos.latitude, pos.longitude),
+            );
+          }
+        });
 
     _allLocationsSubscription =
         LocationService.watchAllLocations(widget.sessionId).listen((locations) {
-      if (!mounted) return;
-      setState(() {
-        _tourists = locations
-            .where((l) => !l.isGuide && l.userId != 'guide')
-            .toList();
-        if (_selectedTourist != null) {
-          final idx =
-              _tourists.indexWhere((t) => t.userId == _selectedTourist!.userId);
-          _selectedTourist = idx != -1 ? _tourists[idx] : null;
-        }
-      });
-    });
+          if (!mounted) return;
+          setState(() {
+            _tourists = locations
+                .where((l) => !l.isGuide && l.userId != 'guide')
+                .toList();
+            if (_selectedTourist != null) {
+              final idx = _tourists.indexWhere(
+                (t) => t.userId == _selectedTourist!.userId,
+              );
+              _selectedTourist = idx != -1 ? _tourists[idx] : null;
+            }
+          });
+        });
   }
 
   double _distanceTo(UserLocation tourist) {
@@ -123,8 +124,9 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   bool _isOutside(UserLocation t) => _distanceTo(t) > 1000.0;
 
   List<UserLocation> get _sortedTourists {
-    List<UserLocation> list =
-        _showOutsideOnly ? _tourists.where(_isOutside).toList() : [..._tourists];
+    List<UserLocation> list = _showOutsideOnly
+        ? _tourists.where(_isOutside).toList()
+        : [..._tourists];
     switch (_sortMode) {
       case 'distance':
         list.sort((a, b) => _distanceTo(a).compareTo(_distanceTo(b)));
@@ -152,7 +154,9 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
             content: Text('📳 Ringing ${tourist.userName}…'),
             backgroundColor: AppColors.primary,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
       }
@@ -177,14 +181,17 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
           content: Text('📳 Ringing all ${_tourists.length} tourists…'),
           backgroundColor: AppColors.primary,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
     }
   }
 
   Future<void> _navigateTo(UserLocation tourist) async {
-    final url = 'https://www.google.com/maps/dir/?api=1'
+    final url =
+        'https://www.google.com/maps/dir/?api=1'
         '&origin=${_guidePosition.latitude},${_guidePosition.longitude}'
         '&destination=${tourist.latitude},${tourist.longitude}'
         '&travelmode=walking';
@@ -196,11 +203,14 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
 
   /// Centres the map on a specific tourist and selects them.
   void _focusOnTourist(UserLocation tourist) {
-    setState(() => _selectedTourist = tourist);
+    setState(() {
+      _selectedTourist = tourist;
+      _showPanel = false;
+    });
     _mapController.move(LatLng(tourist.latitude, tourist.longitude), 17.0);
-    // Collapse the panel slightly so the map is visible
+    // Hide the panel so the quick action card is visible
     _sheetController.animateTo(
-      0.15,
+      0.0,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
@@ -231,19 +241,11 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
     final safeCount = _tourists.length - outsideCount;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: const BackButton(),
         title: const Text(AppStrings.mapTitle),
-        backgroundColor: AppColors.surface,
-        elevation: 1,
         iconTheme: const IconThemeData(color: AppColors.primary),
-        titleTextStyle: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-        ),
         actions: [
-          // Tourist list panel toggle
           IconButton(
             tooltip: 'Manage Tourists',
             icon: Stack(
@@ -263,9 +265,10 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                       child: Text(
                         '$outsideCount',
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold),
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -305,38 +308,42 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.tourvia.app',
               ),
-              CircleLayer(circles: [
-                CircleMarker(
-                  point: _guidePosition,
-                  radius: 1000,
-                  useRadiusInMeter: true,
-                  color: AppColors.primary.withValues(alpha: 0.10),
-                  borderColor: AppColors.primary.withValues(alpha: 0.4),
-                  borderStrokeWidth: 2,
-                ),
-              ]),
-              MarkerLayer(markers: [
-                _mapMarker(
-                  point: _guidePosition,
-                  label: 'You',
-                  icon: Icons.my_location_rounded,
-                  color: AppColors.primary,
-                ),
-                ..._tourists.map((t) {
-                  final outside = _isOutside(t);
-                  final selected = _selectedTourist?.userId == t.userId;
-                  return _mapMarker(
-                    point: LatLng(t.latitude, t.longitude),
-                    label: t.userName,
-                    icon: outside
-                        ? Icons.warning_rounded
-                        : Icons.person_pin_circle_rounded,
-                    color: outside ? AppColors.error : AppColors.success,
-                    selected: selected,
-                    onTap: () => setState(() => _selectedTourist = t),
-                  );
-                }),
-              ]),
+              CircleLayer(
+                circles: [
+                  CircleMarker(
+                    point: _guidePosition,
+                    radius: 1000,
+                    useRadiusInMeter: true,
+                    color: AppColors.primary.withValues(alpha: 0.10),
+                    borderColor: AppColors.primary.withValues(alpha: 0.4),
+                    borderStrokeWidth: 2,
+                  ),
+                ],
+              ),
+              MarkerLayer(
+                markers: [
+                  _mapMarker(
+                    point: _guidePosition,
+                    label: 'You',
+                    icon: Icons.my_location_rounded,
+                    color: AppColors.primary,
+                  ),
+                  ..._tourists.map((t) {
+                    final outside = _isOutside(t);
+                    final selected = _selectedTourist?.userId == t.userId;
+                    return _mapMarker(
+                      point: LatLng(t.latitude, t.longitude),
+                      label: t.userName,
+                      icon: outside
+                          ? Icons.warning_rounded
+                          : Icons.person_pin_circle_rounded,
+                      color: outside ? AppColors.error : AppColors.success,
+                      selected: selected,
+                      onTap: () => setState(() => _selectedTourist = t),
+                    );
+                  }),
+                ],
+              ),
             ],
           ),
 
@@ -349,39 +356,56 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
 
           // ── Recenter button ────────────────────────────────────
           Positioned(
-            bottom: _selectedTourist != null ? 260 : 80,
+            bottom: _selectedTourist != null ? 200 : 24,
             right: 16,
             child: FloatingActionButton.small(
               heroTag: 'recenter',
               tooltip: 'Recenter on my location',
               backgroundColor: Colors.white,
-              onPressed: () =>
-                  _mapController.move(_guidePosition, 15.0),
-              child:
-                  const Icon(Icons.my_location_rounded, color: AppColors.primary),
+              onPressed: () => _mapController.move(_guidePosition, 15.0),
+              child: const Icon(
+                Icons.my_location_rounded,
+                color: AppColors.primary,
+              ),
             ),
           ),
 
           // ── Selected tourist quick-action card ────────────────
           if (_selectedTourist != null && !_showPanel)
             Positioned(
-              bottom: 80,
+              bottom: 16,
               left: 16,
               right: 16,
-              child: _buildQuickCard(_selectedTourist!),
+              child: SafeArea(
+                child: _buildQuickCard(_selectedTourist!),
+              ),
             ),
 
           // ── Tourist Management Draggable Panel ─────────────────
-          DraggableScrollableSheet(
-            controller: _sheetController,
-            initialChildSize: 0.0,
-            minChildSize: 0.0,
-            maxChildSize: 0.85,
-            snap: true,
-            snapSizes: const [0.0, 0.15, 0.45, 0.85],
-            builder: (context, scrollCtrl) {
-              return _buildManagementPanel(scrollCtrl);
+          NotificationListener<DraggableScrollableNotification>(
+            onNotification: (notification) {
+              if (notification.extent <= 0.01 && _showPanel) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() => _showPanel = false);
+                });
+              } else if (notification.extent > 0.01 && !_showPanel) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() => _showPanel = true);
+                });
+              }
+              return false;
             },
+            child: DraggableScrollableSheet(
+              controller: _sheetController,
+              initialChildSize: 0.0,
+              minChildSize: 0.0,
+              maxChildSize: 0.85,
+              snap: true,
+              snapSizes: const [0.0, 0.45, 0.85],
+              builder: (context, scrollCtrl) {
+                return _buildManagementPanel(scrollCtrl);
+              },
+            ),
           ),
         ],
       ),
@@ -414,7 +438,10 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                 border: Border.all(color: color, width: selected ? 2 : 1),
                 boxShadow: const [
                   BoxShadow(
-                      color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                    color: Colors.black12,
+                    blurRadius: 4,
+                    offset: Offset(0, 2),
+                  ),
                 ],
               ),
               child: Text(
@@ -445,9 +472,10 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 3)),
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
         ],
       ),
       child: Row(
@@ -455,33 +483,40 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
         children: [
           _dot(AppColors.success),
           const SizedBox(width: 6),
-          Text('$safe Safe',
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: AppColors.textSecondary)),
+          Text(
+            '$safe Safe',
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: AppColors.textSecondary,
+            ),
+          ),
           Container(
-              margin: const EdgeInsets.symmetric(horizontal: 10),
-              width: 1,
-              height: 18,
-              color: AppColors.border),
+            margin: const EdgeInsets.symmetric(horizontal: 10),
+            width: 1,
+            height: 18,
+            color: AppColors.border,
+          ),
           _dot(AppColors.error),
           const SizedBox(width: 6),
-          Text('$outside Outside',
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: outside > 0 ? AppColors.error : AppColors.textSecondary)),
+          Text(
+            '$outside Outside',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: outside > 0 ? AppColors.error : AppColors.textSecondary,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _dot(Color color) => Container(
-        width: 10,
-        height: 10,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      );
+    width: 10,
+    height: 10,
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+  );
 
   // ── Quick action card (when tourist tapped on map) ──────────
   Widget _buildQuickCard(UserLocation tourist) {
@@ -499,9 +534,10 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
         ),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 12,
-              offset: const Offset(0, 4)),
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
@@ -511,15 +547,11 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
             children: [
               CircleAvatar(
                 radius: 20,
-                backgroundColor:
-                    (outside ? AppColors.error : AppColors.success)
-                        .withValues(alpha: 0.12),
+                backgroundColor: (outside ? AppColors.error : AppColors.success)
+                    .withValues(alpha: 0.12),
                 child: Icon(
-                  outside
-                      ? Icons.warning_rounded
-                      : Icons.person_rounded,
-                  color:
-                      outside ? AppColors.error : AppColors.success,
+                  outside ? Icons.warning_rounded : Icons.person_rounded,
+                  color: outside ? AppColors.error : AppColors.success,
                   size: 20,
                 ),
               ),
@@ -528,30 +560,34 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(tourist.userName,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            color: AppColors.textPrimary)),
+                    Text(
+                      tourist.userName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
                     Text(
                       outside
                           ? '⚠ ${(dist / 1000).toStringAsFixed(2)} km — Outside boundary'
                           : '✅ ${(dist / 1000).toStringAsFixed(2)} km — Safe',
                       style: TextStyle(
-                          fontSize: 12,
-                          color: outside
-                              ? AppColors.error
-                              : AppColors.success,
-                          fontWeight: FontWeight.w600),
+                        fontSize: 12,
+                        color: outside ? AppColors.error : AppColors.success,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.close_rounded,
-                    color: AppColors.textHint, size: 20),
-                onPressed: () =>
-                    setState(() => _selectedTourist = null),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: AppColors.textHint,
+                  size: 20,
+                ),
+                onPressed: () => setState(() => _selectedTourist = null),
               ),
             ],
           ),
@@ -598,10 +634,10 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: color,
               foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.symmetric(vertical: 10),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           )
         : OutlinedButton.icon(
@@ -611,10 +647,10 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
             style: OutlinedButton.styleFrom(
               foregroundColor: color,
               side: BorderSide(color: color),
-              padding:
-                  const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.symmetric(vertical: 10),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           );
   }
@@ -627,8 +663,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius:
-            const BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.12),
@@ -692,9 +727,12 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                       backgroundColor: AppColors.error,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
               ],
@@ -703,18 +741,15 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
 
           // Filter & Sort bar
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
                 // Filter chip
                 FilterChip(
                   label: const Text('Outside Only'),
                   selected: _showOutsideOnly,
-                  onSelected: (v) =>
-                      setState(() => _showOutsideOnly = v),
-                  selectedColor:
-                      AppColors.error.withValues(alpha: 0.15),
+                  onSelected: (v) => setState(() => _showOutsideOnly = v),
+                  selectedColor: AppColors.error.withValues(alpha: 0.15),
                   checkmarkColor: AppColors.error,
                   labelStyle: TextStyle(
                     color: _showOutsideOnly
@@ -736,21 +771,25 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                     value: _sortMode,
                     isDense: true,
                     style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600),
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
                     items: const [
                       DropdownMenuItem(
-                          value: 'name', child: Text('Sort: Name')),
+                        value: 'name',
+                        child: Text('Sort: Name'),
+                      ),
                       DropdownMenuItem(
-                          value: 'distance',
-                          child: Text('Sort: Distance')),
+                        value: 'distance',
+                        child: Text('Sort: Distance'),
+                      ),
                       DropdownMenuItem(
-                          value: 'status',
-                          child: Text('Sort: Status')),
+                        value: 'status',
+                        child: Text('Sort: Status'),
+                      ),
                     ],
-                    onChanged: (v) =>
-                        setState(() => _sortMode = v ?? 'name'),
+                    onChanged: (v) => setState(() => _sortMode = v ?? 'name'),
                   ),
                 ),
               ],
@@ -780,7 +819,9 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                               ? 'All tourists are within the safe zone!'
                               : 'No tourists have joined yet.',
                           style: const TextStyle(
-                              color: AppColors.textHint, fontSize: 14),
+                            color: AppColors.textHint,
+                            fontSize: 14,
+                          ),
                         ),
                       ],
                     ),
@@ -788,12 +829,12 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                 : ListView.separated(
                     controller: scrollCtrl,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     itemCount: sorted.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: 8),
-                    itemBuilder: (ctx, i) =>
-                        _buildTouristTile(sorted[i]),
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (ctx, i) => _buildTouristTile(sorted[i]),
                   ),
           ),
         ],
@@ -815,7 +856,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: outside
@@ -844,9 +885,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
-                        color: outside
-                            ? AppColors.error
-                            : AppColors.success,
+                        color: outside ? AppColors.error : AppColors.success,
                       ),
                     ),
                   ),
@@ -857,12 +896,9 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                       width: 12,
                       height: 12,
                       decoration: BoxDecoration(
-                        color: outside
-                            ? AppColors.error
-                            : AppColors.success,
+                        color: outside ? AppColors.error : AppColors.success,
                         shape: BoxShape.circle,
-                        border: Border.all(
-                            color: AppColors.surface, width: 2),
+                        border: Border.all(color: AppColors.surface, width: 2),
                       ),
                     ),
                   ),
@@ -887,9 +923,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                         Icon(
                           Icons.location_on_rounded,
                           size: 12,
-                          color: outside
-                              ? AppColors.error
-                              : AppColors.success,
+                          color: outside ? AppColors.error : AppColors.success,
                         ),
                         const SizedBox(width: 3),
                         Text(
@@ -903,14 +937,18 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Icon(Icons.access_time_rounded,
-                            size: 12, color: AppColors.textHint),
+                        Icon(
+                          Icons.access_time_rounded,
+                          size: 12,
+                          color: AppColors.textHint,
+                        ),
                         const SizedBox(width: 3),
                         Text(
                           timeStr,
                           style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textHint),
+                            fontSize: 12,
+                            color: AppColors.textHint,
+                          ),
                         ),
                       ],
                     ),
@@ -920,7 +958,9 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
               // Status badge
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 4),
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: (outside ? AppColors.error : AppColors.success)
                       .withValues(alpha: 0.12),
@@ -990,26 +1030,30 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
     return filled
         ? ElevatedButton.icon(
             onPressed: onTap,
-            icon: Icon(icon, size: 14),
-            label: Text(label, style: const TextStyle(fontSize: 12)),
+            icon: Icon(icon, size: 13),
+            label: Text(label, style: const TextStyle(fontSize: 11)),
             style: ElevatedButton.styleFrom(
               backgroundColor: color,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 9),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           )
         : OutlinedButton.icon(
             onPressed: onTap,
-            icon: Icon(icon, size: 14),
-            label: Text(label, style: const TextStyle(fontSize: 12)),
+            icon: Icon(icon, size: 13),
+            label: Text(label, style: const TextStyle(fontSize: 11)),
             style: OutlinedButton.styleFrom(
               foregroundColor: color,
               side: BorderSide(color: color),
-              padding: const EdgeInsets.symmetric(vertical: 9),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           );
   }
@@ -1017,11 +1061,8 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   // ── Permission denied screen ────────────────────────────────
   Widget _buildPermissionScreen() {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text(AppStrings.mapTitle),
-        backgroundColor: AppColors.surface,
-        elevation: 0,
       ),
       body: Center(
         child: Padding(
@@ -1029,12 +1070,16 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.location_off_rounded,
-                  size: 64, color: AppColors.error),
+              const Icon(
+                Icons.location_off_rounded,
+                size: 64,
+                color: AppColors.error,
+              ),
               const SizedBox(height: 16),
-              const Text('Location Permission Denied',
-                  style: TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text(
+                'Location Permission Denied',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               const Text(
                 'Tourvia needs your location to act as the safety anchor for all tourists in the session.',
@@ -1048,7 +1093,8 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 child: const Text('Grant Permissions'),
               ),
