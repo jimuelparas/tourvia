@@ -140,7 +140,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        decoration: BoxDecoration(gradient: AppColors.getBackgroundGradient(context)),
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 28),
@@ -176,15 +176,15 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
             height: 100,
             decoration: BoxDecoration(
               gradient: AppColors.primaryGradient,
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
                   color: AppColors.primary.withValues(
-                    alpha: 0.25 + 0.12 * pulseValue,
+                    alpha: 0.15 + 0.08 * pulseValue,
                   ),
-                  blurRadius: 28 + 10 * pulseValue,
-                  offset: const Offset(0, 8),
-                  spreadRadius: 2 * pulseValue,
+                  blurRadius: 20 + 8 * pulseValue,
+                  offset: const Offset(0, 4),
+                  spreadRadius: 1 * pulseValue,
                 ),
               ],
             ),
@@ -297,7 +297,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFF59E0B), Color(0xFFF97316)],
+                colors: [Color(0xFFF59E0B), Color(0xFFEA580C)],
               ),
               shadowColor: const Color(0xFFF59E0B),
               onTap: _onTouristSelected,
@@ -379,21 +379,20 @@ class _RoleCardState extends State<_RoleCard>
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             color: AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: _isPressed
                   ? widget.shadowColor.withValues(alpha: 0.4)
                   : AppColors.border,
-              width: _isPressed ? 2 : 1.2,
+              width: _isPressed ? 2 : 1,
             ),
             boxShadow: [
               BoxShadow(
                 color: _isPressed
-                    ? widget.shadowColor.withValues(alpha: 0.15)
-                    : Colors.black.withValues(alpha: 0.04),
-                blurRadius: _isPressed ? 20 : 10,
-                offset: const Offset(0, 4),
-                spreadRadius: _isPressed ? 2 : 0,
+                    ? widget.shadowColor.withValues(alpha: 0.08)
+                    : Colors.black.withValues(alpha: 0.02),
+                blurRadius: _isPressed ? 12 : 4,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -405,12 +404,12 @@ class _RoleCardState extends State<_RoleCard>
                 height: 60,
                 decoration: BoxDecoration(
                   gradient: widget.gradient,
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: widget.shadowColor.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+                      color: widget.shadowColor.withValues(alpha: 0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
@@ -451,7 +450,7 @@ class _RoleCardState extends State<_RoleCard>
                 height: 36,
                 decoration: BoxDecoration(
                   color: widget.shadowColor.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
                   Icons.arrow_forward_rounded,

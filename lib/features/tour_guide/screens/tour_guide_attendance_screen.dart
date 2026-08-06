@@ -114,35 +114,31 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: PreferredSize(
-          preferredSize: const Size.fromHeight(kToolbarHeight),
-          child: AppBar(
-            backgroundColor: AppColors.surface,
-            elevation: 0,
-            actions: [
-              IconButton(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const TourGuideMapScreen(),
-                )),
-                icon:
-                    const Icon(Icons.map_rounded, color: AppColors.primary),
-                tooltip: AppStrings.mapTitle,
-              ),
-              const SizedBox(width: 8),
-            ],
-            bottom: TabBar(
-              labelColor: AppColors.primary,
-              unselectedLabelColor: AppColors.textSecondary,
-              indicatorColor: AppColors.primary,
-              indicatorWeight: 3,
-              labelStyle: const TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: 16),
-              tabs: const [
-                Tab(text: AppStrings.tabAllTourists),
-                Tab(text: AppStrings.tabByDestination),
-              ],
+        appBar: AppBar(
+          leading: const BackButton(),
+          iconTheme: const IconThemeData(color: AppColors.primary),
+          actions: [
+            IconButton(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const TourGuideMapScreen(),
+              )),
+              icon:
+                  const Icon(Icons.map_rounded, color: AppColors.primary),
+              tooltip: AppStrings.mapTitle,
             ),
+            const SizedBox(width: 8),
+          ],
+          bottom: TabBar(
+            labelColor: AppColors.primary,
+            unselectedLabelColor: AppColors.textSecondary,
+            indicatorColor: AppColors.primary,
+            indicatorWeight: 3,
+            labelStyle: const TextStyle(
+                fontWeight: FontWeight.w600, fontSize: 16),
+            tabs: const [
+              Tab(text: AppStrings.tabAllTourists),
+              Tab(text: AppStrings.tabByDestination),
+            ],
           ),
         ),
         body: TabBarView(

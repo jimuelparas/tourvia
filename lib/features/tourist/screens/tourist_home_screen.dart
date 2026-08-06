@@ -25,7 +25,6 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -80,10 +79,10 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
             MaterialPageRoute(builder: (_) => const SettingsScreen()),
           ),
           borderRadius: BorderRadius.circular(26),
-          child: const CircleAvatar(
+          child: CircleAvatar(
             radius: 26,
-            backgroundColor: AppColors.accentLight,
-            child: Icon(Icons.settings_rounded, color: AppColors.accent),
+            backgroundColor: AppColors.accent.withValues(alpha: 0.15),
+            child: const Icon(Icons.settings_rounded, color: AppColors.accent),
           ),
         ),
       ],
@@ -118,16 +117,16 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF00A9E0), Color(0xFF0077B6)],
+                    colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF00A9E0).withValues(alpha: 0.3),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
+                      color: const Color(0xFF2196F3).withValues(alpha: 0.2),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
@@ -214,22 +213,24 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
       crossAxisCount: 2,
       crossAxisSpacing: 16,
       mainAxisSpacing: 16,
-      childAspectRatio: 1.1,
+      childAspectRatio: 1.0,
       children: [
         _buildModuleCard(
-          'Tracking',
-          Icons.location_on_rounded,
-          const Color(0xFF6366F1),
-          () => Navigator.push(
+          title: 'Tracking',
+          subtitle: 'Live location',
+          iconAsset: 'assets/icons/location.png',
+          color: AppColors.accentTeal,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const TouristMapScreen()),
           ),
         ),
         _buildModuleCard(
-          'Group Chat',
-          Icons.chat_bubble_rounded,
-          const Color(0xFFF59E0B),
-          () => Navigator.push(
+          title: 'Group Chat',
+          subtitle: 'Messages',
+          iconAsset: 'assets/icons/groupchat.png',
+          color: AppColors.accent,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => GroupChatScreen(
@@ -240,19 +241,21 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
           ),
         ),
         _buildModuleCard(
-          'Weather',
-          Icons.wb_sunny_rounded,
-          const Color(0xFF10B981),
-          () => Navigator.push(
+          title: 'Weather',
+          subtitle: 'Current forecast',
+          iconAsset: 'assets/icons/weather.png',
+          color: AppColors.success,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const WeatherScreen()),
           ),
         ),
         _buildModuleCard(
-          'SOS / Help',
-          Icons.emergency_rounded,
-          AppColors.error,
-          () => Navigator.push(
+          title: 'SOS / Help',
+          subtitle: 'Emergency logs',
+          iconAsset: 'assets/icons/sos.png',
+          color: AppColors.error,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => SosScreen(
@@ -262,10 +265,11 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
           ),
         ),
         _buildModuleCard(
-          'AI Assistant',
-          Icons.smart_toy_rounded,
-          const Color(0xFF8B5CF6),
-          () => Navigator.push(
+          title: 'AI Assistant',
+          subtitle: 'Smart help',
+          iconAsset: 'assets/icons/ai.png',
+          color: AppColors.accentTeal,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const ChatbotScreen()),
           ),
@@ -274,8 +278,17 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
     );
   }
 
-  Widget _buildModuleCard(
-      String title, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildModuleCard({
+    required String title,
+    required String subtitle,
+    required String iconAsset,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    // ── Icon container constants (8px grid) ──
+    const double containerSize = 56;
+    const double iconSize = 32;
+
     return Material(
       color: AppColors.surface,
       borderRadius: BorderRadius.circular(20),
@@ -283,29 +296,53 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.border),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+              // ── Icon: fixed container, perfectly centered image ──
+              SizedBox(
+                width: containerSize,
+                height: containerSize,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: Image.asset(
+                      iconAsset,
+                      width: iconSize,
+                      height: iconSize,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
-                child: Icon(icon, color: color, size: 28),
               ),
+              const SizedBox(height: 12),
+              // ── Title ──
               Text(
                 title,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  fontSize: 15,
                   color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              // ── Subtitle ──
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
                 ),
               ),
             ],

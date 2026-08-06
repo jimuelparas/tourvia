@@ -218,18 +218,33 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Removed code $codeValue'),
-          backgroundColor: AppColors.error,
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded,
+                  color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Access code $codeValue deleted successfully'),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
         ),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to delete code.'),
+        SnackBar(
+          content: const Text('Failed to delete code. Please try again.'),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
         ),
       );
     }
@@ -309,19 +324,102 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Delete Code?'),
-        content: Text(
-          'Remove code "$codeValue"'
-          '${isJoined ? ' currently held by $touristName' : ''}?',
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.delete_forever_rounded,
+                  color: AppColors.error, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('Delete Access Code?'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            RichText(
+              text: TextSpan(
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                  height: 1.5,
+                ),
+                children: [
+                  const TextSpan(text: 'This will permanently delete code '),
+                  TextSpan(
+                    text: codeValue,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  if (isJoined) ...[
+                    const TextSpan(text: ' currently held by '),
+                    TextSpan(
+                      text: touristName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                  const TextSpan(text: '.'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: AppColors.error.withValues(alpha: 0.15)),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.warning_amber_rounded,
+                      color: AppColors.error, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This code will be invalidated immediately '
+                      'and can no longer be used to join the tour.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.error,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete',
-                  style: TextStyle(color: AppColors.error))),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.delete_rounded, size: 18),
+            label: const Text('Delete'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
         ],
       ),
     );
@@ -335,17 +433,10 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: const BackButton(),
         title: const Text('Tourist Access Codes'),
-        backgroundColor: AppColors.surface,
-        elevation: 1,
         iconTheme: const IconThemeData(color: AppColors.primary),
-        titleTextStyle: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-        ),
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: AccessCodeService.watchCodes(widget.sessionId),
@@ -396,7 +487,7 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                       Icons.hourglass_empty_rounded,
                       '$unassigned',
                       'Waiting',
-                      const Color(0xFFF59E0B),
+                      AppColors.accent,
                     ),
                   ],
                 ),
@@ -574,7 +665,7 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                       shape: BoxShape.circle,
                       color: isJoined
                           ? AppColors.success
-                          : const Color(0xFFF59E0B),
+                          : AppColors.accent,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -594,6 +685,13 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                     icon: const Icon(Icons.copy_rounded,
                         size: 20, color: AppColors.textHint),
                     tooltip: 'Copy Code',
+                  ),
+                  IconButton(
+                    onPressed: () => _confirmDelete(
+                        codeDocId, codeValue, isJoined, touristName),
+                    icon: const Icon(Icons.delete_outline_rounded,
+                        size: 20, color: AppColors.error),
+                    tooltip: 'Delete Code',
                   ),
                 ],
               ),

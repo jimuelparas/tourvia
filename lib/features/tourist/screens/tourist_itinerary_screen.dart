@@ -128,7 +128,6 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
         final titleText = _stops.isEmpty ? 'Tour Itinerary' : tourName;
 
         return Scaffold(
-          backgroundColor: AppColors.background,
           appBar: AppBar(
             title: Text(
               titleText,
@@ -137,9 +136,6 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
                     fontWeight: FontWeight.w600,
                   ),
             ),
-            backgroundColor: AppColors.surface,
-            elevation: 0,
-            centerTitle: true,
             leading: const BackButton(),
           ),
           body: _stops.isEmpty
@@ -160,7 +156,7 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: AppColors.accentLight.withValues(alpha: 0.2),
+                color: AppColors.accent.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.map_rounded,
@@ -226,7 +222,7 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
                 Container(
                     width: 2,
                     height: 20,
-                    color: AppColors.accentLight.withValues(alpha: 0.5)),
+                    color: AppColors.accent.withValues(alpha: 0.5)),
               Container(
                 width: 34,
                 height: 34,
@@ -256,7 +252,7 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
                 Expanded(
                   child: Container(
                     width: 2,
-                    color: AppColors.accentLight.withValues(alpha: 0.5),
+                    color: AppColors.accent.withValues(alpha: 0.5),
                   ),
                 ),
             ],

@@ -200,7 +200,7 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
                   gradient: isClaiming ? null : const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFFF59E0B), Color(0xFFF97316)],
+                    colors: [Color(0xFFF59E0B), Color(0xFFEA580C)],
                   ),
                 ),
                 child: ElevatedButton(
@@ -247,7 +247,7 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
                     shadowColor: Colors.transparent,
                     minimumSize: const Size(double.infinity, 56),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                   child: isClaiming
@@ -256,7 +256,7 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
                           height: 24,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
-                            color: Color(0xFFF59E0B),
+                            color: AppColors.accent,
                           ),
                         )
                       : const Row(
@@ -329,7 +329,7 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        decoration: BoxDecoration(gradient: AppColors.getBackgroundGradient(context)),
         child: SafeArea(
           child: FadeTransition(
             opacity: _fadeAnimation,
@@ -414,14 +414,14 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFFF59E0B), Color(0xFFF97316)],
+              colors: [Color(0xFFF59E0B), Color(0xFFEA580C)],
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFF59E0B).withValues(alpha: 0.3),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -452,8 +452,8 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
       duration: const Duration(milliseconds: 300),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFEE2E2),
-        borderRadius: BorderRadius.circular(14),
+        color: AppColors.errorLight,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -463,7 +463,7 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: AppColors.error.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(
               Icons.error_outline_rounded,
@@ -519,21 +519,21 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         gradient: _isSubmitting
             ? null
             : const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFFF59E0B), Color(0xFFF97316)],
+                colors: [Color(0xFFF59E0B), Color(0xFFEA580C)],
               ),
         boxShadow: _isSubmitting
             ? []
             : [
                 BoxShadow(
-                  color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
               ],
       ),
@@ -550,7 +550,7 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
                 height: 24,
                 child: CircularProgressIndicator(
                   strokeWidth: 2.5,
-                  color: Color(0xFFF59E0B),
+                  color: AppColors.accent,
                 ),
               )
             : Row(

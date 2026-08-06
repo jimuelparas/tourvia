@@ -8,6 +8,7 @@ class TourSession {
   final int currentDay;
   final String? guideId;
   final String? guideName;
+  final String status; // 'active' | 'ended'
 
   const TourSession({
     required this.sessionId,
@@ -16,7 +17,11 @@ class TourSession {
     required this.currentDay,
     this.guideId,
     this.guideName,
+    this.status = 'active',
   });
+
+  bool get isActive => status == 'active';
+  bool get isEnded => status == 'ended';
 
   factory TourSession.fromFirestore(String id, Map<String, dynamic> data) {
     return TourSession(
@@ -26,6 +31,7 @@ class TourSession {
       currentDay: data['currentDay'] as int? ?? 1,
       guideId: data['guideId'] as String?,
       guideName: data['guideName'] as String?,
+      status: data['status'] as String? ?? 'active',
     );
   }
 
@@ -74,6 +80,7 @@ class TourSessionService {
         'tourName': 'Unnamed Tour',
         'totalDays': 3,
         'currentDay': 1,
+        'status': 'active',
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
@@ -100,5 +107,63 @@ class TourSessionService {
       'totalDays': totalDays,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  // ── End Tour ────────────────────────────────────────────────
+
+  /// Ends a tour session by:
+  /// 1. Setting status to 'ended' on the session document
+  /// 2. Deleting all temporary sub-collections: codes, chat, locations, sos
+  /// 3. Deleting attendance records for each itinerary stop
+  ///
+  /// The session document and itinerary sub-collection are preserved
+  /// for historical records. The guide's user account is never affected.
+  static Future<void> endTour(String sessionId) async {
+    final sessionDoc = _db.collection('tour_sessions').doc(sessionId);
+
+    // 1. Mark session as ended
+    await sessionDoc.update({
+      'status': 'ended',
+      'endedAt': FieldValue.serverTimestamp(),
+    });
+
+    // 2. Delete temporary sub-collections
+    await _deleteCollection(sessionDoc.collection('codes'));
+    await _deleteCollection(sessionDoc.collection('chat'));
+    await _deleteCollection(sessionDoc.collection('locations'));
+    await _deleteCollection(sessionDoc.collection('sos'));
+
+    // 3. Delete attendance records (nested under each stop)
+    final attendanceDocs =
+        await sessionDoc.collection('attendance').get();
+    for (final stopDoc in attendanceDocs.docs) {
+      await _deleteCollection(
+        sessionDoc
+            .collection('attendance')
+            .doc(stopDoc.id)
+            .collection('records'),
+      );
+      // Delete the attendance stop doc itself
+      await stopDoc.reference.delete();
+    }
+  }
+
+  /// Helper: deletes all documents in a Firestore collection.
+  /// Uses batched writes (max 500 per batch) for efficiency.
+  static Future<void> _deleteCollection(
+      CollectionReference collection) async {
+    const batchSize = 400;
+    QuerySnapshot snapshot;
+
+    do {
+      snapshot = await collection.limit(batchSize).get();
+      if (snapshot.docs.isEmpty) break;
+
+      final batch = _db.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } while (snapshot.docs.length == batchSize);
   }
 }

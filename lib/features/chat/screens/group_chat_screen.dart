@@ -138,7 +138,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       builder: (_) => SafeArea(
         child: Padding(
@@ -203,8 +203,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: const BackButton(),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -228,8 +228,6 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             ),
           ],
         ),
-        backgroundColor: AppColors.surface,
-        elevation: 1,
       ),
       body: Column(
         children: [
@@ -380,34 +378,39 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                   if (message.isMedia && message.mediaUrl != null) ...[
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        message.mediaUrl!,
-                        height: 180,
-                        width: 220,
-                        fit: BoxFit.cover,
-                        loadingBuilder: (ctx, child, progress) {
-                          if (progress == null) return child;
-                          return Container(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final imgWidth = MediaQuery.of(context).size.width * 0.58;
+                          return Image.network(
+                            message.mediaUrl!,
                             height: 180,
-                            width: 220,
-                            alignment: Alignment.center,
-                            color: AppColors.surfaceVariant,
-                            child: CircularProgressIndicator(
-                              value: progress.expectedTotalBytes != null
-                                  ? progress.cumulativeBytesLoaded /
-                                      progress.expectedTotalBytes!
-                                  : null,
+                            width: imgWidth,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (ctx, child, progress) {
+                              if (progress == null) return child;
+                              return Container(
+                                height: 180,
+                                width: imgWidth,
+                                alignment: Alignment.center,
+                                color: AppColors.surfaceVariant,
+                                child: CircularProgressIndicator(
+                                  value: progress.expectedTotalBytes != null
+                                      ? progress.cumulativeBytesLoaded /
+                                          progress.expectedTotalBytes!
+                                      : null,
+                                ),
+                              );
+                            },
+                            errorBuilder: (_, __, ___) => Container(
+                              height: 180,
+                              width: imgWidth,
+                              color: AppColors.surfaceVariant,
+                              alignment: Alignment.center,
+                              child: const Icon(Icons.broken_image_rounded,
+                                  color: AppColors.textHint),
                             ),
                           );
                         },
-                        errorBuilder: (_, __, ___) => Container(
-                          height: 180,
-                          width: 220,
-                          color: AppColors.surfaceVariant,
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.broken_image_rounded,
-                              color: AppColors.textHint),
-                        ),
                       ),
                     ),
                     const SizedBox(height: 4),

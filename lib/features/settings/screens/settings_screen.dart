@@ -7,6 +7,7 @@ import '../../auth/screens/terms_and_conditions_screen.dart';
 import '../../auth/screens/role_selection_screen.dart';
 import 'about_app_screen.dart';
 import 'about_developers_screen.dart';
+import 'profile_screen.dart';
 import 'references_screen.dart';
 
 /// Screen for Application Settings and Information (US-22, US-23, US-24, US-25).
@@ -46,7 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: const Text('Log Out'),
         content: const Text(
           'Are you sure you want to log out? You will need to sign in again.',
@@ -90,24 +91,27 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: const BackButton(),
         title: const Text('Settings & Info'),
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        centerTitle: true,
-        titleTextStyle: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-        ),
-        iconTheme: const IconThemeData(color: AppColors.primary),
       ),
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            _buildSectionHeader('Account'),
+            _buildListTile(
+              context,
+              icon: Icons.person_outline_rounded,
+              title: 'My Profile',
+              subtitle: 'View and edit your personal information',
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              ),
+            ),
+            const SizedBox(height: 16),
             _buildSectionHeader('Application'),
             _buildListTile(
               context,

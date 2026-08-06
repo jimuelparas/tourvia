@@ -6,6 +6,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/models/tourist_session.dart';
 import '../../../core/services/sos_service.dart';
+import '../../../core/services/location_service.dart';
 
 /// Screen for SOS Emergency Alerts (US-18).
 /// Features a pulsing SOS button, real GPS location, live alert log, and safety tips.
@@ -78,7 +79,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         title: const Row(
           children: [
             Icon(Icons.emergency_rounded, color: AppColors.error),
@@ -141,6 +142,8 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
       );
 
       if (mounted) {
+        // Vibrate/ring to confirm SOS was sent
+        LocationService.buzzDevice();
         messenger.showSnackBar(
           SnackBar(
             content: const Row(
@@ -180,11 +183,20 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
 
   // ── Open map at GPS coordinates ────────────────────────────
   Future<void> _openMap(SosAlert alert) async {
-    final url =
-        'https://www.google.com/maps/search/?api=1&query=${alert.lat},${alert.lng}';
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    // Try geo: URI first (opens native maps app)
+    final geoUri = Uri.parse('geo:${alert.lat},${alert.lng}?q=${alert.lat},${alert.lng}');
+    // Fallback: Google Maps web link
+    final mapsUri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=${alert.lat},${alert.lng}');
+    try {
+      if (await canLaunchUrl(geoUri)) {
+        await launchUrl(geoUri);
+      } else {
+        await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      // Final fallback — force external browser
+      await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -216,18 +228,9 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final isGuide = !TouristSessionManager.isLoggedIn;
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: const BackButton(),
         title: const Text('SOS / Emergency'),
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        centerTitle: true,
-        titleTextStyle: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-        ),
-        iconTheme: const IconThemeData(color: AppColors.primary),
       ),
       body: FadeTransition(
         opacity: _fadeAnimation,
@@ -235,61 +238,70 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
           children: [
             // ── SOS Button ─────────────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 32),
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Column(
                 children: [
-                  GestureDetector(
-                    onTap: _isSending ? null : _triggerSos,
-                    child: AnimatedBuilder(
-                      animation: _pulseAnimation,
-                      builder: (context, child) {
-                        return Transform.scale(
-                          scale: _pulseAnimation.value,
-                          child: Container(
-                            height: 180,
-                            width: 180,
-                            decoration: BoxDecoration(
-                              color: AppColors.error.withValues(alpha: 0.08),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Center(
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      // Scale the button to fit smaller screens
+                      final screenH = MediaQuery.of(context).size.height;
+                      final outerSize = screenH < 700 ? 140.0 : 180.0;
+                      final innerSize = screenH < 700 ? 108.0 : 140.0;
+                      final fontSize  = screenH < 700 ? 34.0  : 42.0;
+                      return GestureDetector(
+                        onTap: _isSending ? null : _triggerSos,
+                        child: AnimatedBuilder(
+                          animation: _pulseAnimation,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _pulseAnimation.value,
                               child: Container(
-                                height: 140,
-                                width: 140,
+                                height: outerSize,
+                                width: outerSize,
                                 decoration: BoxDecoration(
-                                  color: _isSending
-                                      ? AppColors.error.withValues(alpha: 0.5)
-                                      : AppColors.error,
+                                  color: AppColors.error.withValues(alpha: 0.08),
                                   shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.error
-                                          .withValues(alpha: 0.4),
-                                      blurRadius: 30,
-                                      spreadRadius: 8,
-                                    ),
-                                  ],
                                 ),
                                 child: Center(
-                                  child: _isSending
-                                      ? const CircularProgressIndicator(
-                                          color: Colors.white, strokeWidth: 3)
-                                      : const Text(
-                                          'SOS',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 42,
-                                            fontWeight: FontWeight.w900,
-                                            letterSpacing: 3,
-                                          ),
+                                  child: Container(
+                                    height: innerSize,
+                                    width: innerSize,
+                                    decoration: BoxDecoration(
+                                      color: _isSending
+                                          ? AppColors.error.withValues(alpha: 0.5)
+                                          : AppColors.error,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.error
+                                              .withValues(alpha: 0.4),
+                                          blurRadius: 30,
+                                          spreadRadius: 8,
                                         ),
+                                      ],
+                                    ),
+                                    child: Center(
+                                      child: _isSending
+                                          ? const CircularProgressIndicator(
+                                              color: Colors.white, strokeWidth: 3)
+                                          : Text(
+                                              'SOS',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: fontSize,
+                                                fontWeight: FontWeight.w900,
+                                                letterSpacing: 3,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                            );
+                          },
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -416,7 +428,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
         color: resolved
             ? AppColors.success.withValues(alpha: 0.04)
             : AppColors.error.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: resolved
               ? AppColors.success.withValues(alpha: 0.15)
@@ -580,7 +592,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: AppColors.background,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppColors.border),
           ),
           child: Row(

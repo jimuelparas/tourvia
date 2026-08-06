@@ -119,7 +119,6 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: SafeArea(
         child: FadeTransition(
           opacity: _fadeAnimation,
@@ -257,7 +256,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
               'Tour Management',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primaryDark,
+                    color: AppColors.primary,
                   ),
             ),
           ],
@@ -285,6 +284,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
       builder: (context, sessionSnapshot) {
         final session = sessionSnapshot.data;
         final tourName = session?.tourName ?? 'Unnamed Tour';
+        final isEnded = session?.isEnded ?? false;
         final dayStr = session != null
             ? 'Day ${session.currentDay} of ${session.totalDays}'
             : 'Day 1 of 3';
@@ -297,29 +297,39 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                 '$touristCount ${touristCount == 1 ? 'tourist' : 'tourists'}';
 
             return GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const TourGuideItineraryScreen(
-                    sessionId: 'demo-session-001',
-                  ),
-                ),
-              ),
+              onTap: isEnded
+                  ? null
+                  : () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const TourGuideItineraryScreen(
+                            sessionId: 'demo-session-001',
+                          ),
+                        ),
+                      ),
               child: Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF00A9E0), Color(0xFF0077B6)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(24),
+                  gradient: isEnded
+                      ? const LinearGradient(
+                          colors: [Color(0xFF94A3B8), Color(0xFF64748B)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : const LinearGradient(
+                          colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                  borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF00A9E0).withValues(alpha: 0.3),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
+                      color: isEnded
+                          ? const Color(0xFF94A3B8).withValues(alpha: 0.15)
+                          : const Color(0xFF2196F3).withValues(alpha: 0.2),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
@@ -329,9 +339,9 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Current Tour',
-                          style: TextStyle(
+                        Text(
+                          isEnded ? 'Tour Ended' : 'Current Tour',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
@@ -344,9 +354,9 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                             color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Text(
-                            'Active',
-                            style: TextStyle(
+                          child: Text(
+                            isEnded ? 'Ended' : 'Active',
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
@@ -366,12 +376,42 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '$countStr • $dayStr',
+                      isEnded
+                          ? 'This tour has been completed.'
+                          : '$countStr • $dayStr',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 14,
                       ),
                     ),
+                    // End Tour button — only visible when tour is active
+                    if (!isEnded) ...[
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _confirmEndTour(),
+                          icon: const Icon(Icons.stop_circle_rounded,
+                              size: 18),
+                          label: const Text('End Tour'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                Colors.white.withValues(alpha: 0.2),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(
+                                color:
+                                    Colors.white.withValues(alpha: 0.3),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -379,6 +419,220 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           },
         );
       },
+    );
+  }
+
+  Future<void> _confirmEndTour() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) {
+        final confirmController = TextEditingController();
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final textMatches =
+                confirmController.text.trim().toUpperCase() == 'END';
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.stop_circle_rounded,
+                        color: AppColors.error, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text('End This Tour?'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'This action will:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _endTourBullet('Invalidate all access codes'),
+                  _endTourBullet(
+                      'Remove all participants & attendance records'),
+                  _endTourBullet(
+                      'Delete live tracking data & chat messages'),
+                  _endTourBullet('Delete SOS alerts'),
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySurface,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.info_outline_rounded,
+                            size: 16, color: AppColors.primary),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Your account, profile, and itinerary will be preserved.',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.primary),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Type END to confirm:',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: confirmController,
+                    onChanged: (_) => setDialogState(() {}),
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: InputDecoration(
+                      hintText: 'END',
+                      hintStyle:
+                          const TextStyle(color: AppColors.textHint),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      filled: true,
+                      fillColor: AppColors.background,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide:
+                            const BorderSide(color: AppColors.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide:
+                            const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide:
+                            const BorderSide(color: AppColors.error),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: textMatches
+                      ? () => Navigator.pop(context, true)
+                      : null,
+                  icon: const Icon(Icons.stop_rounded, size: 18),
+                  label: const Text('End Tour'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor:
+                        AppColors.error.withValues(alpha: 0.3),
+                    disabledForegroundColor: Colors.white60,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await TourSessionService.endTour('demo-session-001');
+      if (!mounted) return;
+      Navigator.pop(context); // dismiss loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.check_circle_rounded,
+                  color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                    'Tour ended successfully. All temporary data cleared.'),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // dismiss loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to end tour: $e'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
+  }
+
+  Widget _endTourBullet(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 5),
+            child: Icon(Icons.circle, size: 5, color: AppColors.error),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -390,13 +644,14 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
       crossAxisCount: 2,
       crossAxisSpacing: 16,
       mainAxisSpacing: 16,
-      childAspectRatio: 1.1,
+      childAspectRatio: 1.0,
       children: [
         _buildModuleCard(
-          'Itinerary',
-          Icons.map_rounded,
-          const Color(0xFF0EA5E9),
-          () => Navigator.push(
+          title: 'Itinerary',
+          subtitle: 'View & manage',
+          iconAsset: 'assets/icons/itinerary.png',
+          color: const Color(0xFF0EA5E9),
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => const TourGuideItineraryScreen(
@@ -406,10 +661,11 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           ),
         ),
         _buildModuleCard(
-          'Attendance',
-          Icons.groups_rounded,
-          const Color(0xFF6366F1),
-          () => Navigator.push(
+          title: 'Attendance',
+          subtitle: 'Check-in guests',
+          iconAsset: 'assets/icons/attendance.png',
+          color: AppColors.primary,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => const TourGuideAttendanceScreen(
@@ -419,19 +675,21 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           ),
         ),
         _buildModuleCard(
-          'Tracking',
-          Icons.location_on_rounded,
-          const Color(0xFF3B82F6),
-          () => Navigator.push(
+          title: 'Tracking',
+          subtitle: 'Live location',
+          iconAsset: 'assets/icons/location.png',
+          color: AppColors.accentTeal,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const TourGuideMapScreen()),
           ),
         ),
         _buildModuleCard(
-          'Messages',
-          Icons.chat_bubble_rounded,
-          const Color(0xFFF59E0B),
-          () => Navigator.push(
+          title: 'Messages',
+          subtitle: 'Group chat',
+          iconAsset: 'assets/icons/groupchat.png',
+          color: AppColors.accent,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => const GroupChatScreen(
@@ -442,19 +700,21 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           ),
         ),
         _buildModuleCard(
-          'Weather',
-          Icons.wb_sunny_rounded,
-          const Color(0xFF10B981),
-          () => Navigator.push(
+          title: 'Weather',
+          subtitle: 'Current forecast',
+          iconAsset: 'assets/icons/weather.png',
+          color: AppColors.success,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const WeatherScreen()),
           ),
         ),
         _buildModuleCard(
-          'SOS Log',
-          Icons.emergency_rounded,
-          AppColors.error,
-          () => Navigator.push(
+          title: 'SOS Log',
+          subtitle: 'Emergency logs',
+          iconAsset: 'assets/icons/sos.png',
+          color: AppColors.error,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => const SosScreen(
@@ -464,19 +724,21 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           ),
         ),
         _buildModuleCard(
-          'AI Assistant',
-          Icons.smart_toy_rounded,
-          const Color(0xFF8B5CF6),
-          () => Navigator.push(
+          title: 'AI Assistant',
+          subtitle: 'Smart help',
+          iconAsset: 'assets/icons/ai.png',
+          color: AppColors.accentTeal,
+          onTap: () => Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const ChatbotScreen()),
           ),
         ),
         _buildModuleCard(
-          'Access Code',
-          Icons.qr_code_rounded,
-          AppColors.primaryDark,
-          () => Navigator.push(
+          title: 'Access Code',
+          subtitle: 'Manage codes',
+          iconAsset: 'assets/icons/accesscode.png',
+          color: AppColors.primaryActive,
+          onTap: () => Navigator.push(
             context,
             // TODO (Step 4+): Replace 'demo-session-001' with the real active
             // session ID from the session management feature once built.
@@ -491,8 +753,17 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
     );
   }
 
-  Widget _buildModuleCard(
-      String title, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildModuleCard({
+    required String title,
+    required String subtitle,
+    required String iconAsset,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    // ── Icon container constants (8px grid) ──
+    const double containerSize = 56;
+    const double iconSize = 32;
+
     return Material(
       color: AppColors.surface,
       borderRadius: BorderRadius.circular(20),
@@ -500,29 +771,53 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.border),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+              // ── Icon: fixed container, perfectly centered image ──
+              SizedBox(
+                width: containerSize,
+                height: containerSize,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: Image.asset(
+                      iconAsset,
+                      width: iconSize,
+                      height: iconSize,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
-                child: Icon(icon, color: color, size: 28),
               ),
+              const SizedBox(height: 12),
+              // ── Title ──
               Text(
                 title,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  fontSize: 15,
                   color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              // ── Subtitle ──
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
                 ),
               ),
             ],

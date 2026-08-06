@@ -140,18 +140,18 @@ class _ChatbotScreenState extends State<ChatbotScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: const BackButton(),
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+                color: AppColors.accentTeal.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.smart_toy_rounded,
-                  color: Color(0xFF8B5CF6), size: 20),
+                  color: AppColors.accentTeal, size: 20),
             ),
             const SizedBox(width: 10),
             Column(
@@ -175,8 +175,6 @@ class _ChatbotScreenState extends State<ChatbotScreen>
             ),
           ],
         ),
-        backgroundColor: AppColors.surface,
-        elevation: 1,
       ),
       body: FadeTransition(
         opacity: _fadeAnimation,
@@ -213,7 +211,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
         children: [
           const CircleAvatar(
             radius: 16,
-            backgroundColor: Color(0xFF8B5CF6),
+            backgroundColor: AppColors.accentTeal,
             child: Icon(Icons.smart_toy_rounded,
                 color: Colors.white, size: 18),
           ),
@@ -276,7 +274,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
           if (!isMe) ...[
             const CircleAvatar(
               radius: 16,
-              backgroundColor: Color(0xFF8B5CF6),
+              backgroundColor: AppColors.accentTeal,
               child: Icon(Icons.smart_toy_rounded,
                   color: Colors.white, size: 18),
             ),
@@ -356,7 +354,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
                     color: AppColors.primarySurface,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(9999),
                     border: Border.all(
                         color: AppColors.primary.withValues(alpha: 0.2)),
                   ),
@@ -412,7 +410,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
               decoration: BoxDecoration(
                 color: _isTyping
                     ? AppColors.textHint
-                    : const Color(0xFF8B5CF6),
+                    : AppColors.accentTeal,
                 shape: BoxShape.circle,
               ),
               child: IconButton(

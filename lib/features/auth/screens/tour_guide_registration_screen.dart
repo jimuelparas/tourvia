@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../core/constants/app_strings.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/gemini_vision_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../widgets/custom_text_field.dart';
 import 'registration_success_screen.dart';
@@ -37,6 +39,11 @@ class _TourGuideRegistrationScreenState
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
   bool _isSubmitting = false;
+
+  // ID photo for Gemini AI verification
+  XFile? _selectedIdImage;
+  Uint8List? _selectedIdImageBytes;
+  bool _isVerifying = false;
 
   // ── Animations ──────────────────────────────────────────
   late final AnimationController _fadeController;
@@ -130,12 +137,74 @@ class _TourGuideRegistrationScreenState
 
   // ── Submit ──────────────────────────────────────────────
 
+  Future<void> _pickIdImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1920,
+      maxHeight: 1920,
+      imageQuality: 85,
+    );
+    if (picked != null) {
+      final bytes = await picked.readAsBytes();
+      setState(() {
+        _selectedIdImage = picked;
+        _selectedIdImageBytes = bytes;
+      });
+    }
+  }
+
+  Future<void> _captureIdImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1920,
+      maxHeight: 1920,
+      imageQuality: 85,
+    );
+    if (picked != null) {
+      final bytes = await picked.readAsBytes();
+      setState(() {
+        _selectedIdImage = picked;
+        _selectedIdImageBytes = bytes;
+      });
+    }
+  }
+
   Future<void> _onSubmit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isSubmitting = true);
+    // Validate ID photo is selected
+    if (_selectedIdImageBytes == null) {
+      _showError('Please upload a photo of your DOT Tour Guide ID.');
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _isVerifying = true;
+    });
 
     try {
+      // Step 1: Verify ID with Gemini Vision AI
+      final mimeType = _selectedIdImage?.mimeType ?? 'image/jpeg';
+      final result = await GeminiVisionService.verifyTourGuideId(
+        _selectedIdImageBytes!,
+        mimeType: mimeType,
+      );
+
+      if (!mounted) return;
+      setState(() => _isVerifying = false);
+
+      if (!result.isVerified) {
+        setState(() => _isSubmitting = false);
+        // Show specific failure reason
+        final reason = result.failureReason ?? _buildFailureReason(result);
+        _showVerificationFailedDialog(reason);
+        return;
+      }
+
+      // Step 2: Register with auto-approved status
       await AuthService.registerTourGuide(
         fullName: _fullNameCtrl.text,
         age: int.parse(_ageCtrl.text.trim()),
@@ -143,6 +212,7 @@ class _TourGuideRegistrationScreenState
         contactNumber: _contactCtrl.text,
         tourGuideId: _tourGuideIdCtrl.text,
         password: _passwordCtrl.text,
+        status: 'approved', // Auto-approved via AI verification
       );
 
       if (!mounted) return;
@@ -162,13 +232,107 @@ class _TourGuideRegistrationScreenState
       );
     } on AuthException catch (e) {
       if (!mounted) return;
-      setState(() => _isSubmitting = false);
+      setState(() {
+        _isSubmitting = false;
+        _isVerifying = false;
+      });
       _showError(e.message);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isSubmitting = false);
+      setState(() {
+        _isSubmitting = false;
+        _isVerifying = false;
+      });
       _showError('Registration failed. Please try again.');
     }
+  }
+
+  String _buildFailureReason(GeminiIdVerificationResult result) {
+    final reasons = <String>[];
+    if (!result.isOfficialDotId) {
+      reasons.add(
+          'The uploaded image does not appear to be an official DOT Tour Guide ID.');
+    }
+    if (result.isExpired) {
+      reasons.add(
+          'The ID appears to be expired (Expiry: ${result.expiryDate ?? 'unknown'}).');
+    }
+    if (!result.isImageClear) {
+      reasons.add(
+          'The uploaded image is unclear, blurry, or cropped. Please upload a clear, complete photo.');
+    }
+    return reasons.isNotEmpty
+        ? reasons.join('\n\n')
+        : 'Verification failed. Please try again with a valid ID.';
+  }
+
+  void _showVerificationFailedDialog(String reason) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.gpp_bad_rounded,
+                  color: AppColors.error, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('Verification Failed'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Your Tour Guide ID could not be verified:',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.error.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: AppColors.error.withValues(alpha: 0.15)),
+              ),
+              child: Text(
+                reason,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.error,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Try Again'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showError(String message) {
@@ -191,7 +355,7 @@ class _TourGuideRegistrationScreenState
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        decoration: BoxDecoration(gradient: AppColors.getBackgroundGradient(context)),
         child: SafeArea(
           child: FadeTransition(
             opacity: _fadeAnimation,
@@ -235,12 +399,12 @@ class _TourGuideRegistrationScreenState
           height: 56,
           decoration: BoxDecoration(
             gradient: AppColors.primaryGradient,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.3),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
+                color: AppColors.primary.withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -265,6 +429,43 @@ class _TourGuideRegistrationScreenState
   }
 
   // ── Form ────────────────────────────────────────────────
+
+  Widget _buildIdPhotoUpload() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Tour Guide ID Photo', style: Theme.of(context).textTheme.labelMedium),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () {
+            showModalBottomSheet(
+              context: context,
+              builder: (ctx) => SafeArea(
+                child: Wrap(
+                  children: [
+                    ListTile(leading: const Icon(Icons.camera_alt), title: const Text('Camera'), onTap: () { _captureIdImage(); Navigator.pop(ctx); }),
+                    ListTile(leading: const Icon(Icons.photo_library), title: const Text('Gallery'), onTap: () { _pickIdImage(); Navigator.pop(ctx); }),
+                  ],
+                ),
+              ),
+            );
+          },
+          child: Container(
+            height: 120,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+            ),
+            child: _selectedIdImageBytes != null
+                ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(_selectedIdImageBytes!, fit: BoxFit.cover))
+                : const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, color: AppColors.primary), Text('Upload ID Photo')]),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildForm() {
     return Form(
@@ -334,6 +535,10 @@ class _TourGuideRegistrationScreenState
           ),
           const SizedBox(height: 18),
 
+          // DOT Tour Guide ID Photo Upload
+          _buildIdPhotoUpload(),
+          const SizedBox(height: 18),
+
           // Password
           CustomTextField(
             controller: _passwordCtrl,
@@ -390,15 +595,15 @@ class _TourGuideRegistrationScreenState
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         gradient: _isSubmitting ? null : AppColors.primaryGradient,
         boxShadow: _isSubmitting
             ? []
             : [
                 BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.35),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
               ],
       ),
@@ -410,13 +615,28 @@ class _TourGuideRegistrationScreenState
           shadowColor: Colors.transparent,
         ),
         child: _isSubmitting
-            ? const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: AppColors.primary,
-                ),
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  if (_isVerifying) ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Verifying Tour Guide ID...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
               )
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,

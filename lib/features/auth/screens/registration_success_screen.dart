@@ -80,7 +80,7 @@ class _RegistrationSuccessScreenState extends State<RegistrationSuccessScreen>
     return Scaffold(
       body: Container(
         width: double.infinity,
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        decoration: BoxDecoration(gradient: AppColors.getBackgroundGradient(context)),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -169,7 +169,7 @@ class _RegistrationSuccessScreenState extends State<RegistrationSuccessScreen>
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: AppColors.primarySurface,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: AppColors.primary.withValues(alpha: 0.15),
                 ),
@@ -193,7 +193,7 @@ class _RegistrationSuccessScreenState extends State<RegistrationSuccessScreen>
                     child: Text(
                       AppStrings.successNote,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppColors.primaryDark,
+                            color: AppColors.primary,
                             height: 1.45,
                           ),
                     ),
@@ -236,7 +236,7 @@ class _RegistrationSuccessScreenState extends State<RegistrationSuccessScreen>
             minimumSize: const Size(double.infinity, 56),
             side: const BorderSide(color: AppColors.primary, width: 1.5),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(8),
             ),
             foregroundColor: AppColors.primary,
           ),

@@ -193,11 +193,10 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
 
     if (!_hasPermission) {
       return Scaffold(
-        backgroundColor: AppColors.background,
         appBar: AppBar(
+          leading: const BackButton(),
           title: const Text('Live Tracking'),
-          backgroundColor: AppColors.surface,
-          elevation: 0,
+          iconTheme: const IconThemeData(color: AppColors.primary),
         ),
         body: Center(
           child: Padding(
@@ -233,7 +232,6 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: Stack(
         children: [
           // ── OpenStreetMap ──────────────────────────────────────────
@@ -281,11 +279,13 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
           Positioned(
             top: 50,
             left: 20,
-            child: CircleAvatar(
-              backgroundColor: Colors.white.withValues(alpha: 0.9),
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary),
-                onPressed: () => Navigator.pop(context),
+            child: SafeArea(
+              child: CircleAvatar(
+                backgroundColor: Colors.white.withValues(alpha: 0.9),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary),
+                  onPressed: () => Navigator.pop(context),
+                ),
               ),
             ),
           ),
@@ -294,25 +294,69 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
           if (_isOutOfBounds)
             Positioned(top: 0, left: 0, right: 0, child: _buildBoundaryAlert()),
 
-          // Route-to-guide button
-          if (_isOutOfBounds)
-            Positioned(
-              bottom: 24,
-              left: 24,
-              right: 24,
-              child: ElevatedButton.icon(
-                onPressed: _routeToGuide,
-                icon: const Icon(Icons.directions_rounded),
-                label: const Text(AppStrings.routeToGuide),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accent,
-                  foregroundColor: Colors.white,
-                  elevation: 6,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
+          // Navigate to guide button — always visible at bottom
+          Positioned(
+            bottom: 24,
+            left: 24,
+            right: 24,
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Distance info card
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.95),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _isOutOfBounds ? Icons.warning_rounded : Icons.check_circle_rounded,
+                          color: _isOutOfBounds ? AppColors.error : AppColors.success,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _isOutOfBounds
+                              ? '⚠ ${(_distanceToGuide / 1000).toStringAsFixed(2)} km — Outside boundary'
+                              : '✅ ${_distanceToGuide.toStringAsFixed(0)} m — Within safe zone',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: _isOutOfBounds ? AppColors.error : AppColors.success,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _routeToGuide,
+                    icon: const Icon(Icons.directions_rounded),
+                    label: const Text('Navigate to Guide'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isOutOfBounds ? AppColors.error : AppColors.accent,
+                      foregroundColor: Colors.white,
+                      elevation: 6,
+                      minimumSize: const Size(double.infinity, 50),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
@@ -359,57 +403,60 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
   }
 
   Widget _buildBoundaryAlert() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 60, 24, 20),
-      decoration: BoxDecoration(
-        color: AppColors.error,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.error.withValues(alpha: 0.35),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              shape: BoxShape.circle,
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+        decoration: BoxDecoration(
+          color: AppColors.error,
+          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.error.withValues(alpha: 0.35),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
             ),
-            child: const Icon(Icons.warning_rounded, color: Colors.white, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  AppStrings.boundaryAlert,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${AppStrings.returnToBoundary} (${(_distanceToGuide / 1000.0).toStringAsFixed(2)} km away)',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontSize: 13,
-                    height: 1.4,
-                  ),
-                ),
-              ],
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.warning_rounded, color: Colors.white, size: 28),
             ),
-          ),
-        ],
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    AppStrings.boundaryAlert,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${AppStrings.returnToBoundary} (${(_distanceToGuide / 1000.0).toStringAsFixed(2)} km away)',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'dart:io';
+
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -74,8 +75,8 @@ class NotificationService {
       debugPrint('[FCM] Token refreshed: $newToken');
     });
 
-    // 5. Android: create the default notification channel
-    if (Platform.isAndroid) {
+    // 5. Set foreground notification presentation options (mobile only)
+    if (!kIsWeb) {
       await _fcm.setForegroundNotificationPresentationOptions(
         alert: true,
         badge: true,
@@ -115,7 +116,7 @@ class NotificationService {
 
     await _db.collection('users').doc(userId).set({
       'fcmToken': token,
-      'platform': Platform.isIOS ? 'ios' : 'android',
+      'platform': kIsWeb ? 'web' : (defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android'),
       'tokenUpdatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
@@ -134,7 +135,7 @@ class NotificationService {
         .doc(codeDocId)
         .set({
       'fcmToken': token,
-      'platform': Platform.isIOS ? 'ios' : 'android',
+      'platform': kIsWeb ? 'web' : (defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android'),
       'tokenUpdatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 

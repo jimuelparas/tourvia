@@ -10,18 +10,9 @@ class AboutDevelopersScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: const BackButton(),
         title: const Text('About the Developers'),
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        centerTitle: true,
-        titleTextStyle: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-        ),
-        iconTheme: const IconThemeData(color: AppColors.primary),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -31,7 +22,7 @@ class AboutDevelopersScreen extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF00A9E0), Color(0xFF0077B6)],
+                  colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -63,31 +54,49 @@ class AboutDevelopersScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             _buildDeveloperCard(
-              name: 'Developer A',
-              role: 'Lead Mobile Engineer',
+              context,
+              name: 'Collarga, Raniel Rayen C.',
+              role: 'Project Manager',
               description:
-                  'Responsible for the core Flutter architecture, state management, '
-                  'and integration of tracking and mapping features.',
+                  'Led the development sprint planning, task assignments, and coordinated across the team to deliver features on schedule.',
               color: AppColors.primary,
-              icon: Icons.phone_android_rounded,
+              icon: Icons.assignment_rounded,
             ),
             _buildDeveloperCard(
-              name: 'Developer B',
-              role: 'UI/UX Designer',
+              context,
+              name: 'Paras, Jimuel S.',
+              role: 'Programmer',
               description:
-                  'Designed the visual identity, user flows, and interface components '
-                  'ensuring a clean and accessible experience.',
-              color: const Color(0xFF8B5CF6),
+                  'Handled Flutter UI implementation, state management, API integration, and developed dynamic client-side logic.',
+              color: AppColors.primary,
+              icon: Icons.code_rounded,
+            ),
+            _buildDeveloperCard(
+              context,
+              name: 'Capunpun, Samantha M.',
+              role: 'UX & UI Designer',
+              description:
+                  'Designed the user flows, typography, color palette, and high-fidelity mockups to ensure a seamless and intuitive user experience.',
+              color: AppColors.accentTeal,
               icon: Icons.palette_rounded,
             ),
             _buildDeveloperCard(
-              name: 'Developer C',
-              role: 'Backend & Firebase Developer',
+              context,
+              name: 'Lavarias, Dexter',
+              role: 'System Analyst',
               description:
-                  'Built the server-side logic, real-time database, authentication, '
-                  'and cloud functions powering the app.',
-              color: const Color(0xFFF59E0B),
-              icon: Icons.cloud_rounded,
+                  'Conducted database schema design, analyzed application requirements, and mapped logical flows for the system.',
+              color: AppColors.accent,
+              icon: Icons.analytics_rounded,
+            ),
+            _buildDeveloperCard(
+              context,
+              name: 'Lozano, John Roel A.',
+              role: 'QA & Tester',
+              description:
+                  'Executed user acceptance tests, identified performance bottlenecks, and verified core features to ensure high reliability.',
+              color: AppColors.accentTeal,
+              icon: Icons.bug_report_rounded,
             ),
             const SizedBox(height: 16),
             Container(
@@ -121,7 +130,8 @@ class AboutDevelopersScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDeveloperCard({
+  Widget _buildDeveloperCard(
+    BuildContext context, {
     required String name,
     required String role,
     required String description,
@@ -132,7 +142,7 @@ class AboutDevelopersScreen extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border),
         boxShadow: [

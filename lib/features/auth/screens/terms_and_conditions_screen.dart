@@ -74,12 +74,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        scrolledUnderElevation: 0.5,
-        centerTitle: true,
         title: Text(
           AppStrings.termsTitle,
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
@@ -120,7 +115,7 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen>
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
                           color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: AppColors.border),
                           boxShadow: [
                             BoxShadow(

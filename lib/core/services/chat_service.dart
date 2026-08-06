@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -41,9 +42,9 @@ class ChatService {
 
   /// Uploads [xFile] to Firebase Storage under `/chat/{sessionId}/{filename}`.
   ///
-  /// Uses [XFile.readAsBytes] + [Reference.putData] so it works on
-  /// Flutter Web (Chrome) AND native mobile — unlike dart:io File / putFile()
-  /// which only works on mobile.
+  /// Ensures the user is anonymously authenticated before uploading so that
+  /// Firebase Storage security rules allow the request (tourists have no
+  /// Firebase Auth account).
   ///
   /// Optionally calls [onProgress] with a value between 0.0 and 1.0.
   /// Returns the public download URL on success.
@@ -52,6 +53,12 @@ class ChatService {
     XFile xFile, {
     void Function(double progress)? onProgress,
   }) async {
+    // Ensure authenticated (anonymously) so Storage rules pass.
+    final auth = FirebaseAuth.instance;
+    if (auth.currentUser == null) {
+      await auth.signInAnonymously();
+    }
+
     final bytes = await xFile.readAsBytes();
     final mimeType = xFile.mimeType ?? 'image/jpeg';
     final fileName =

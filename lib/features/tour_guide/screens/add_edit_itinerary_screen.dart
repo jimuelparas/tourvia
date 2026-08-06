@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_strings.dart';
+import '../../../core/constants/philippine_locations_data.dart';
 import '../../../core/services/itinerary_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/widgets/custom_text_field.dart';
@@ -33,8 +34,11 @@ class _AddEditItineraryScreenState extends State<AddEditItineraryScreen> {
   late TextEditingController _startController;
   late TextEditingController _endController;
   late TextEditingController _notesController;
+  final TextEditingController _searchController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
   bool _isSaving = false;
+  bool _showSuggestions = false;
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -53,6 +57,7 @@ class _AddEditItineraryScreenState extends State<AddEditItineraryScreen> {
     _startController.dispose();
     _endController.dispose();
     _notesController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -104,7 +109,6 @@ class _AddEditItineraryScreenState extends State<AddEditItineraryScreen> {
     final isEditing = widget.itemToEdit != null;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
           isEditing ? AppStrings.editStopTitle : AppStrings.addStopTitle,
@@ -113,9 +117,6 @@ class _AddEditItineraryScreenState extends State<AddEditItineraryScreen> {
                 fontWeight: FontWeight.w600,
               ),
         ),
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        centerTitle: true,
         leading: const BackButton(),
       ),
       body: SafeArea(
@@ -133,6 +134,51 @@ class _AddEditItineraryScreenState extends State<AddEditItineraryScreen> {
                   validator: (val) =>
                       val == null || val.isEmpty ? 'Required' : null,
                 ),
+                const SizedBox(height: 8),
+
+                // ── Suggested Locations toggle ─────────────
+                GestureDetector(
+                  onTap: () => setState(
+                      () => _showSuggestions = !_showSuggestions),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primarySurface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lightbulb_outline_rounded,
+                            color: AppColors.primary, size: 18),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Suggested Tourist Locations',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ),
+                        Icon(
+                          _showSuggestions
+                              ? Icons.expand_less_rounded
+                              : Icons.expand_more_rounded,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // ── Suggestions panel ─────────────────────
+                if (_showSuggestions) _buildSuggestionsPanel(),
+
                 const SizedBox(height: 16),
 
                 // Date Picker
@@ -270,6 +316,189 @@ class _AddEditItineraryScreenState extends State<AddEditItineraryScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  // ── Location Suggestions Panel ────────────────────────────
+
+  Widget _buildSuggestionsPanel() {
+    final filtered = PhilippineLocationsData.search(_searchQuery);
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      child: Container(
+        margin: const EdgeInsets.only(top: 8),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Search bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (value) =>
+                    setState(() => _searchQuery = value),
+                decoration: InputDecoration(
+                  hintText: 'Search city or attraction...',
+                  hintStyle: const TextStyle(
+                      fontSize: 13, color: AppColors.textHint),
+                  prefixIcon: const Icon(Icons.search_rounded,
+                      size: 20, color: AppColors.textHint),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded,
+                              size: 18, color: AppColors.textHint),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  filled: true,
+                  fillColor: AppColors.background,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+
+            // Results
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 280),
+              child: filtered.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(20),
+                      child: Text(
+                        'No matching locations found.',
+                        style: TextStyle(
+                          color: AppColors.textHint,
+                          fontSize: 13,
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, index) {
+                        final city =
+                            filtered.keys.elementAt(index);
+                        final attractions = filtered[city]!;
+
+                        return Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            // City section header
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                  14, 10, 14, 4),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                      Icons
+                                          .location_city_rounded,
+                                      size: 14,
+                                      color:
+                                          AppColors.primary),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      city,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight:
+                                            FontWeight.w700,
+                                        color: AppColors
+                                            .primary,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Attraction chips
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(
+                                      horizontal: 10),
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children:
+                                    attractions.map((name) {
+                                  return GestureDetector(
+                                    onTap: () {
+                                      _destController.text =
+                                          name;
+                                      setState(() {
+                                        _showSuggestions =
+                                            false;
+                                        _searchQuery = '';
+                                        _searchController
+                                            .clear();
+                                      });
+                                    },
+                                    child: Container(
+                                      padding:
+                                          const EdgeInsets
+                                              .symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      decoration:
+                                          BoxDecoration(
+                                        color: AppColors
+                                            .background,
+                                        borderRadius:
+                                            BorderRadius
+                                                .circular(
+                                                    8),
+                                        border: Border.all(
+                                          color: AppColors
+                                              .border,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        name,
+                                        style:
+                                            const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors
+                                              .textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
       ),
     );

@@ -232,9 +232,6 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
               return Scaffold(
                 appBar: AppBar(
                   title: const Text('Tour Itinerary'),
-                  backgroundColor: AppColors.surface,
-                  elevation: 0,
-                  centerTitle: true,
                   leading: const BackButton(),
                 ),
                 body: Center(
@@ -254,7 +251,6 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
             final titleText = stops.isEmpty ? 'Tour Itinerary' : tourName;
 
             return Scaffold(
-              backgroundColor: AppColors.background,
               appBar: AppBar(
                 title: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -274,9 +270,6 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                     ),
                   ],
                 ),
-                backgroundColor: AppColors.surface,
-                elevation: 0,
-                centerTitle: true,
                 leading: const BackButton(),
               ),
               body: stops.isEmpty
@@ -339,16 +332,16 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF3B82F6), Color(0xFF1E3A8A)],
+                colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
               ),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF3B82F6).withValues(alpha: 0.30),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+                  color: const Color(0xFF2196F3).withValues(alpha: 0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),

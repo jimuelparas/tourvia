@@ -195,18 +195,11 @@ class _TourGuideStopAttendanceScreenState
     final pending = _pendingCount;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: const BackButton(),
         title: Text(widget.stop.destinationName,
             overflow: TextOverflow.ellipsis),
-        backgroundColor: AppColors.surface,
-        elevation: 1,
         iconTheme: const IconThemeData(color: AppColors.primary),
-        titleTextStyle: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
-        ),
         actions: [
           if (_pendingCount > 0)
             TextButton.icon(

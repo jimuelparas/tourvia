@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:vibration/vibration.dart';
 
 /// Model representing a user's live location record in Firestore (Step 8 / US-11 to US-16).
 class UserLocation {
@@ -160,12 +162,35 @@ class LocationService {
     });
   }
 
-  /// Helper to trigger a local alarm/buzz sequence on the device.
+  /// Triggers a loud alarm on the device:
+  /// - Plays the bundled alarm.wav sound (4 beeps).
+  /// - Vibrates in a repeating pattern simultaneously.
   static Future<void> buzzDevice() async {
-    // Vibrate 3 times
-    for (int i = 0; i < 3; i++) {
+    // 1. Play alarm sound
+    try {
+      final player = AudioPlayer();
+      await player.setVolume(1.0);
+      await player.play(AssetSource('audio/alarm.wav'));
+      // Dispose after the sound finishes (~1.6 s)
+      Future.delayed(const Duration(seconds: 3), () => player.dispose());
+    } catch (_) {
+      // Audio not available — fall back to haptic
       await HapticFeedback.heavyImpact();
-      await Future.delayed(const Duration(milliseconds: 250));
+    }
+
+    // 2. Vibrate concurrently
+    try {
+      final hasVibrator = (await Vibration.hasVibrator()) == true;
+      if (hasVibrator) {
+        // Pattern: wait 0ms, vibrate 500ms, pause 150ms, vibrate 500ms,
+        //          pause 150ms, vibrate 500ms, pause 150ms, vibrate 700ms
+        await Vibration.vibrate(
+          pattern: <int>[0, 500, 150, 500, 150, 500, 150, 700],
+          intensities: <int>[0, 255, 0, 255, 0, 255, 0, 255],
+        );
+      }
+    } catch (_) {
+      // Vibration not supported — silently ignore
     }
   }
 }

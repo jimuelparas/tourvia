@@ -158,7 +158,7 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        decoration: BoxDecoration(gradient: AppColors.getBackgroundGradient(context)),
         child: SafeArea(
           child: FadeTransition(
             opacity: _fadeAnimation,
@@ -212,12 +212,12 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
           height: 56,
           decoration: BoxDecoration(
             gradient: AppColors.primaryGradient,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.3),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
+                color: AppColors.primary.withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -254,8 +254,8 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
         ? AppColors.error
         : AppColors.error;
     final Color bannerBg = isPending
-        ? const Color(0xFFFFF8E1)
-        : const Color(0xFFFEE2E2);
+        ? AppColors.warning.withValues(alpha: 0.12)
+        : AppColors.error.withValues(alpha: 0.12);
     final IconData bannerIcon = isPending
         ? Icons.hourglass_top_rounded
         : isRejected
@@ -267,7 +267,7 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: bannerBg,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: bannerColor.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -277,7 +277,7 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: bannerColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(bannerIcon, color: bannerColor, size: 22),
           ),
@@ -287,7 +287,7 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
               _loginError!,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: bannerColor == AppColors.warning
-                    ? const Color(0xFF92400E)
+                    ? AppColors.warning
                     : AppColors.error,
                 fontWeight: FontWeight.w500,
                 height: 1.4,
@@ -398,15 +398,15 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         gradient: _isSubmitting ? null : AppColors.primaryGradient,
         boxShadow: _isSubmitting
             ? []
             : [
                 BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.35),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
               ],
       ),

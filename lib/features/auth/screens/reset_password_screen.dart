@@ -145,7 +145,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
+        decoration: BoxDecoration(gradient: AppColors.getBackgroundGradient(context)),
         child: SafeArea(
           child: FadeTransition(
             opacity: _fadeAnimation,
@@ -229,12 +229,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
           height: 56,
           decoration: BoxDecoration(
             gradient: AppColors.primaryGradient,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.3),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
+                color: AppColors.primary.withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -337,7 +337,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
             child: Text(
               AppStrings.passwordRequirements,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppColors.primaryDark,
+                color: AppColors.primaryActive,
                 height: 1.4,
               ),
             ),
@@ -353,15 +353,15 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen>
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         gradient: _isSubmitting ? null : AppColors.primaryGradient,
         boxShadow: _isSubmitting
             ? []
             : [
                 BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.35),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
+                  color: AppColors.primary.withValues(alpha: 0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
               ],
       ),

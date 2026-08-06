@@ -10,18 +10,9 @@ class ReferencesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       appBar: AppBar(
+        leading: const BackButton(),
         title: const Text('References'),
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        centerTitle: true,
-        titleTextStyle: const TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-        ),
-        iconTheme: const IconThemeData(color: AppColors.primary),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -106,7 +97,7 @@ class ReferencesScreen extends StatelessWidget {
               title: 'Mapbox SDK',
               description: 'Maps, geolocation, and real-time GPS tracking '
                   'for tourist and guide location services.',
-              color: const Color(0xFF6366F1),
+              color: AppColors.accentTeal,
             ),
             _buildReferenceCard(
               icon: Icons.place_rounded,
@@ -120,7 +111,7 @@ class ReferencesScreen extends StatelessWidget {
               title: 'Firebase (Google)',
               description: 'Authentication, Firestore real-time database, '
                   'Cloud Functions, and push notifications.',
-              color: const Color(0xFFF59E0B),
+              color: AppColors.accent,
             ),
             _buildReferenceCard(
               icon: Icons.flutter_dash_rounded,
@@ -134,7 +125,7 @@ class ReferencesScreen extends StatelessWidget {
               title: 'OpenAI API',
               description: 'AI-powered chatbot for answering tourist queries '
                   'about Philippine destinations.',
-              color: const Color(0xFF8B5CF6),
+              color: AppColors.primary,
             ),
             const SizedBox(height: 32),
           ],

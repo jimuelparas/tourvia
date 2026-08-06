@@ -10,19 +10,17 @@ class AboutAppScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
             expandedHeight: 200,
             pinned: true,
-            backgroundColor: AppColors.surface,
-            iconTheme: const IconThemeData(color: AppColors.primary),
+            leading: const BackButton(),
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [Color(0xFF00A9E0), Color(0xFF0077B6)],
+                    colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -107,13 +105,13 @@ class AboutAppScreen extends StatelessWidget {
                   Icons.chat_bubble_rounded,
                   'Group Communication',
                   'Dedicated group chat for tour guides and tourists with media sharing.',
-                  const Color(0xFFF59E0B),
+                  AppColors.accent,
                 ),
                 _buildFeature(
                   Icons.map_rounded,
                   'Itinerary Management',
                   'Create, edit, and share tour itineraries with per-stop attendance tracking.',
-                  const Color(0xFF6366F1),
+                  AppColors.accentTeal,
                 ),
                 _buildFeature(
                   Icons.emergency_rounded,
@@ -131,7 +129,7 @@ class AboutAppScreen extends StatelessWidget {
                   Icons.smart_toy_rounded,
                   'AI Chatbot Assistant',
                   'Ask questions about Philippine tourist destinations and get instant answers.',
-                  const Color(0xFF8B5CF6),
+                  AppColors.primary,
                 ),
                 const SizedBox(height: 24),
                 Container(
