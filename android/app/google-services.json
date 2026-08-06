@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "723690444111",
+    "project_id": "tourvia-8fa8c",
+    "storage_bucket": "tourvia-8fa8c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:723690444111:android:f7842cfd625fac1999613a",
+        "android_client_info": {
+          "package_name": "com.example.tourvia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAh-UTmr6k_HW028sQGSWZCi1dSIoLrw9A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
