@@ -1,27 +1,26 @@
-
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
 import '../../../core/constants/app_strings.dart';
 import '../../../core/services/itinerary_service.dart';
 import '../../../core/services/tour_session_service.dart';
 import '../../../core/services/weather_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/navigation_utils.dart';
 import '../../itinerary/models/itinerary_item.dart';
 import '../../weather/screens/weather_screen.dart';
 import 'add_edit_itinerary_screen.dart';
 import 'tour_guide_stop_attendance_screen.dart';
 
-/// Screen to view and manage the tour itinerary with per-stop attendance (US-07/08).
-///
-/// All data is now backed by Firestore via [ItineraryService].
-/// [sessionId] is passed in from the home screen (currently using
-/// a placeholder until session management is wired up).
+/// Screen to view and manage the tour itinerary with OpenStreetMap integration.
 class TourGuideItineraryScreen extends StatefulWidget {
   final String sessionId;
 
   const TourGuideItineraryScreen({
     super.key,
-    this.sessionId = 'demo-session-001',
+    required this.sessionId,
   });
 
   @override
@@ -30,13 +29,12 @@ class TourGuideItineraryScreen extends StatefulWidget {
 }
 
 class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
-  // Track which stop is being deleted so we can show a spinner
   final Set<String> _deletingIds = {};
-
-  // ── Firestore CRUD ───────────────────────────────────────
+  bool _fabExpanded = false;
 
   Future<void> _navigateToAddEdit({ItineraryItem? item}) async {
-    final result = await Navigator.of(context).push<ItineraryItem>(
+    setState(() => _fabExpanded = false);
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AddEditItineraryScreen(
           itemToEdit: item,
@@ -44,10 +42,6 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
         ),
       ),
     );
-    // result is null if user cancelled
-    if (result == null) return;
-    // Firestore write is done inside AddEditItineraryScreen — nothing needed here.
-    // The StreamBuilder will auto-update.
   }
 
   Future<void> _deleteStop(ItineraryItem stop) async {
@@ -56,7 +50,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Delete Stop?'),
-        content: Text('Remove "${stop.destinationName}" from the itinerary?'),
+        content: Text('Remove "\${stop.destinationName}" from the itinerary?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -75,25 +69,10 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     setState(() => _deletingIds.add(stop.id));
     try {
       await ItineraryService.deleteStop(widget.sessionId, stop.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Removed "${stop.destinationName}"'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.error,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Failed to delete stop. Please try again.'),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.error,
-        ),
+        const SnackBar(content: Text('Failed to delete stop.')),
       );
     } finally {
       if (mounted) setState(() => _deletingIds.remove(stop.id));
@@ -101,7 +80,6 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
   }
 
   Future<void> _onReorder(List<ItineraryItem> stops, int oldIndex, int newIndex) async {
-    // Optimistic UI: we just rely on Firestore stream to re-render
     if (newIndex > oldIndex) newIndex -= 1;
     final reordered = List<ItineraryItem>.from(stops);
     final moved = reordered.removeAt(oldIndex);
@@ -115,10 +93,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not save new order.'),
-          behavior: SnackBarBehavior.floating,
-        ),
+        const SnackBar(content: Text('Could not save new order.')),
       );
     }
   }
@@ -135,80 +110,46 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     );
   }
 
-  Future<void> _showEditTourNameDialog(BuildContext context, String currentName, TourSession? session) async {
-    final nameCtrl = TextEditingController(text: currentName == 'Unnamed Tour' ? '' : currentName);
-    final currentDayCtrl = TextEditingController(text: session?.currentDay.toString() ?? '1');
-    final totalDaysCtrl = TextEditingController(text: session?.totalDays.toString() ?? '3');
-
-    await showDialog(
+  Future<void> _confirmEndTour() async {
+    setState(() => _fabExpanded = false);
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Edit Tour Details'),
-        content: Column(
+        title: const Text('End Tour?'),
+        content: const Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Tour Title / Name',
-                hintText: 'e.g. Baguio City Heritage Tour',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: currentDayCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Current Day',
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: totalDaysCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Total Days',
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            Text('This will:'),
+            SizedBox(height: 8),
+            Text('✔ Stop Live Tracking'),
+            Text('✔ Disable Access Code'),
+            Text('✔ Finish Attendance'),
+            Text('✔ Archive Tour'),
+            Text('✔ Generate Tour Summary'),
+            Text('✔ Return to Dashboard'),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
-          TextButton(
-            onPressed: () async {
-              final newName = nameCtrl.text.trim();
-              final curDay = int.tryParse(currentDayCtrl.text) ?? 1;
-              final totDays = int.tryParse(totalDaysCtrl.text) ?? 3;
-              if (newName.isNotEmpty) {
-                await TourSessionService.updateSession(
-                  widget.sessionId,
-                  tourName: newName,
-                  currentDay: curDay,
-                  totalDays: totDays,
-                );
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Save'),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
+            child: const Text('End Tour'),
           ),
         ],
       ),
     );
-  }
 
-  // ── Build ────────────────────────────────────────────────
+    if (confirmed == true && mounted) {
+      // In a real app we'd archive data and show summary. For now, pop to dashboard.
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -221,30 +162,8 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
         return StreamBuilder<List<ItineraryItem>>(
           stream: ItineraryService.watchItinerary(widget.sessionId),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting &&
-                !snapshot.hasData) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
-            }
-
-            if (snapshot.hasError) {
-              return Scaffold(
-                appBar: AppBar(
-                  title: const Text('Tour Itinerary'),
-                  leading: const BackButton(),
-                ),
-                body: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Text(
-                      'Failed to load itinerary.\n${snapshot.error}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.error, fontSize: 14),
-                    ),
-                  ),
-                ),
-              );
+            if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
 
             final stops = snapshot.data ?? [];
@@ -252,23 +171,12 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
 
             return Scaffold(
               appBar: AppBar(
-                title: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      titleText,
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.edit_rounded, size: 18, color: AppColors.textHint),
-                      tooltip: 'Edit Tour Details',
-                      onPressed: () => _showEditTourNameDialog(context, tourName, session),
-                    ),
-                  ],
+                title: Text(
+                  titleText,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
                 leading: const BackButton(),
               ),
@@ -277,22 +185,52 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                   : Column(
                       children: [
                         _buildWeatherBanner(context, session),
+                        _buildProgress(stops),
                         Expanded(child: _buildTimeline(stops)),
                       ],
                     ),
-              floatingActionButton: FloatingActionButton.extended(
-                onPressed: () => _navigateToAddEdit(),
-                backgroundColor: AppColors.primary,
-                icon: const Icon(Icons.add_rounded, color: Colors.white),
-                label: const Text(
-                  AppStrings.addStopButton,
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                ),
-              ),
+              floatingActionButton: _buildExpandableFab(),
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildExpandableFab() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (_fabExpanded) ...[
+          FloatingActionButton.extended(
+            heroTag: 'addStop',
+            onPressed: _navigateToAddEdit,
+            backgroundColor: AppColors.primary,
+            icon: const Icon(Icons.add_location_alt_rounded, color: Colors.white),
+            label: const Text('Add Stop', style: TextStyle(color: Colors.white)),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'endTour',
+            onPressed: _confirmEndTour,
+            backgroundColor: AppColors.error,
+            icon: const Icon(Icons.flag_rounded, color: Colors.white),
+            label: const Text('End Tour', style: TextStyle(color: Colors.white)),
+          ),
+          const SizedBox(height: 16),
+        ],
+        FloatingActionButton(
+          heroTag: 'mainFab',
+          onPressed: () => setState(() => _fabExpanded = !_fabExpanded),
+          backgroundColor: AppColors.primary,
+          child: AnimatedRotation(
+            turns: _fabExpanded ? 0.125 : 0, // 45 degrees
+            duration: const Duration(milliseconds: 200),
+            child: const Icon(Icons.add_rounded, color: Colors.white),
+          ),
+        ),
+      ],
     );
   }
 
@@ -310,11 +248,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     }
 
     return FutureBuilder<WeatherInfo>(
-      future: WeatherService.fetchWeather(
-        latitude: lat,
-        longitude: lon,
-        locationName: name,
-      ),
+      future: WeatherService.fetchWeather(latitude: lat, longitude: lon, locationName: name),
       builder: (context, snapshot) {
         final info = snapshot.data;
         final tempStr = info != null ? '${info.tempC.toStringAsFixed(0)}°C' : '28°C';
@@ -323,27 +257,15 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
         final rainStr = info != null ? 'Rain ${info.rainProbability}%' : 'Rain 65%';
 
         return GestureDetector(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const WeatherScreen()),
-          ),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WeatherScreen())),
           child: Container(
             margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
               ),
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF2196F3).withValues(alpha: 0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
             ),
             child: Row(
               children: [
@@ -354,18 +276,12 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                   children: [
                     Text(
                       locationStr,
-                      style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500),
+                      style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       '$tempStr  •  $descStr',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -376,29 +292,42 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                     color: Colors.white.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.water_drop_rounded,
-                          color: Colors.lightBlueAccent, size: 13),
-                      const SizedBox(width: 4),
-                      Text(
-                        rainStr,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
+                  child: Text(rainStr, style: const TextStyle(color: Colors.white, fontSize: 11)),
                 ),
-                const SizedBox(width: 8),
-                const Icon(Icons.chevron_right_rounded,
-                    color: Colors.white70, size: 18),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildProgress(List<ItineraryItem> stops) {
+    final completed = stops.where((s) => s.status == ItineraryStatus.completed).length;
+    final percent = stops.isEmpty ? 0.0 : completed / stops.length;
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Tour Progress', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppColors.textSecondary)),
+              Text('$completed / ${stops.length} Stops Completed', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppColors.primary)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: percent,
+            backgroundColor: AppColors.primarySurface,
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(4),
+            minHeight: 6,
+          ),
+        ],
+      ),
     );
   }
 
@@ -409,37 +338,18 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                color: AppColors.primarySurface,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.map_rounded,
-                  size: 64, color: AppColors.primary),
-            ),
+            const Icon(Icons.map_rounded, size: 64, color: AppColors.primary),
             const SizedBox(height: 24),
-            Text(
-              AppStrings.emptyItineraryTG,
+            const Text(
+              'No itinerary yet.\nTap + Add Stop to create your first destination.',
               textAlign: TextAlign.center,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(color: AppColors.textSecondary, height: 1.5),
+              style: TextStyle(color: AppColors.textSecondary, height: 1.5),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () => _navigateToAddEdit(),
               icon: const Icon(Icons.add_rounded),
               label: const Text('Add First Stop'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
             ),
           ],
         ),
@@ -449,16 +359,14 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
 
   Widget _buildTimeline(List<ItineraryItem> stops) {
     return ReorderableListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       itemCount: stops.length,
-      onReorder: (oldIndex, newIndex) =>
-          _onReorder(stops, oldIndex, newIndex),
+      onReorder: (oldIndex, newIndex) => _onReorder(stops, oldIndex, newIndex),
       itemBuilder: (_, index) => _buildStopCard(stops[index], index, stops),
     );
   }
 
-  Widget _buildStopCard(
-      ItineraryItem stop, int index, List<ItineraryItem> stops) {
+  Widget _buildStopCard(ItineraryItem stop, int index, List<ItineraryItem> stops) {
     final isFirst = index == 0;
     final isLast = index == stops.length - 1;
     final isDeleting = _deletingIds.contains(stop.id);
@@ -468,209 +376,213 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Timeline spine ─────────────────────────────────
+          // ── Vertical Timeline Spine ──
           Column(
             children: [
-              if (!isFirst)
-                Container(
-                    width: 2, height: 20, color: AppColors.primarySurface),
+              if (!isFirst) Container(width: 2, height: 20, color: AppColors.primarySurface),
               Container(
-                width: 36,
-                height: 36,
+                width: 32,
+                height: 32,
                 decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
+                  color: stop.status == ItineraryStatus.completed ? AppColors.success : AppColors.primary,
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.3),
-                      blurRadius: 8,
-                    ),
-                  ],
                 ),
                 child: Center(
-                  child: Text(
-                    '${index + 1}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
+                  child: stop.status == ItineraryStatus.completed
+                      ? const Icon(Icons.check, color: Colors.white, size: 16)
+                      : Text('${index + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
-              if (!isLast)
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    color: AppColors.primarySurface,
-                  ),
-                ),
+              if (!isLast) Expanded(child: Container(width: 2, color: AppColors.primarySurface)),
             ],
           ),
           const SizedBox(width: 12),
-          // ── Stop card ──────────────────────────────────────
+          // ── Main Card ──
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(
-                  bottom: isLast ? 0 : 16, top: isFirst ? 0 : 20),
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 8, top: isFirst ? 0 : 20),
               child: Opacity(
                 opacity: isDeleting ? 0.5 : 1.0,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: AppColors.border),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.border),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(0, 2))],
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ── Header ─────────────────────────────
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 14, 8, 0),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    stop.destinationName,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(fontWeight: FontWeight.w700),
-                                  ),
-                                  const SizedBox(height: 4),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header Info
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(stop.destinationName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                    ),
+                                    _buildStatusBadge(stop.status),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.access_time_rounded, size: 14, color: AppColors.textHint),
+                                    const SizedBox(width: 4),
+                                    Text('${stop.startTime} – ${stop.endTime}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                  ],
+                                ),
+                                if (stop.notes.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
                                   Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Icon(Icons.access_time_rounded,
-                                          size: 13, color: AppColors.textHint),
+                                      const Icon(Icons.notes_rounded, size: 14, color: AppColors.textHint),
                                       const SizedBox(width: 4),
-                                      Text(
-                                        '${stop.startTime} – ${stop.endTime}',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                                color:
-                                                    AppColors.textSecondary),
-                                      ),
+                                      Expanded(child: Text(stop.notes, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary))),
                                     ],
                                   ),
                                 ],
-                              ),
-                            ),
-                            // Edit button
-                            IconButton(
-                              icon: const Icon(Icons.edit_rounded,
-                                  color: AppColors.textHint, size: 20),
-                              tooltip: 'Edit Stop',
-                              onPressed: isDeleting
-                                  ? null
-                                  : () => _navigateToAddEdit(item: stop),
-                            ),
-                            // Delete button
-                            isDeleting
-                                ? const Padding(
-                                    padding: EdgeInsets.all(8),
-                                    child: SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: AppColors.error),
-                                    ),
-                                  )
-                                : IconButton(
-                                    icon: const Icon(
-                                        Icons.delete_outline_rounded,
-                                        color: AppColors.error,
-                                        size: 20),
-                                    tooltip: 'Delete Stop',
-                                    onPressed: () => _deleteStop(stop),
-                                  ),
-                            const Padding(
-                              padding: EdgeInsets.only(right: 4),
-                              child: Icon(Icons.drag_handle_rounded,
-                                  color: AppColors.border),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (stop.notes.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Padding(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 16),
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceVariant
-                                  .withValues(alpha: 0.5),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(Icons.info_outline_rounded,
-                                    size: 14,
-                                    color: AppColors.textSecondary),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    stop.notes,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                            color: AppColors.textSecondary,
-                                            height: 1.4),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.people_alt_rounded, size: 14, color: AppColors.primary),
+                                    const SizedBox(width: 4),
+                                    Text('${stop.presentCount} / ${stop.totalPassengers} Present', style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      const Divider(height: 1, color: AppColors.border),
-                      // ── Attendance mini-row ─────────────────
-                      InkWell(
-                        onTap: () => _openAttendance(stop),
-                        borderRadius: const BorderRadius.vertical(
-                            bottom: Radius.circular(18)),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          child: Row(
+                          // Embedded Map Preview (if lat/lng exists)
+                          if (stop.latitude != 0.0) _buildMapPreview(stop),
+                          // Actions
+                          const Divider(height: 1),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              const Icon(Icons.checklist_rounded,
-                                  size: 16, color: AppColors.primary),
-                              const SizedBox(width: 6),
-                              const Text('Attendance',
-                                  style: TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13)),
-                              const Spacer(),
-                              const Icon(Icons.chevron_right_rounded,
-                                  size: 18, color: AppColors.textHint),
+                              TextButton.icon(
+                                onPressed: () => _openAttendance(stop),
+                                icon: const Icon(Icons.checklist_rounded, size: 18),
+                                label: const Text('Attendance', style: TextStyle(fontSize: 12)),
+                              ),
+
+                              IconButton(
+                                icon: const Icon(Icons.edit_rounded, size: 18),
+                                onPressed: () => _navigateToAddEdit(item: stop),
+                              ),
                             ],
                           ),
+                        ],
+                      ),
+                    ),
+                    // Route to next stop UI
+                    if (!isLast && stop.distanceToNext != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.arrow_downward_rounded, size: 16, color: AppColors.textHint),
+                            const SizedBox(width: 8),
+                            Text(stop.distanceToNext! >= 1000 ? '\${(stop.distanceToNext! / 1000).toStringAsFixed(1)} km' : '\${stop.distanceToNext!.toStringAsFixed(0)} m', style: const TextStyle(fontSize: 12, color: AppColors.textHint)),
+                            const SizedBox(width: 16),
+                            Icon(stop.distanceToNext! < 1000 ? Icons.directions_walk_rounded : Icons.directions_car_rounded, size: 16, color: AppColors.primary),
+                            const SizedBox(width: 4),
+                            Text('${(stop.durationToNext! / 60).ceil()} min', style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(ItineraryStatus status) {
+    Color bg;
+    Color fg;
+    String text;
+    switch (status) {
+      case ItineraryStatus.upcoming:
+        bg = AppColors.primarySurface; fg = AppColors.primary; text = 'Upcoming';
+        break;
+      case ItineraryStatus.ongoing:
+        bg = AppColors.success.withValues(alpha: 0.1); fg = AppColors.success; text = 'Ongoing';
+        break;
+      case ItineraryStatus.completed:
+        bg = AppColors.textHint.withValues(alpha: 0.1); fg = AppColors.textSecondary; text = 'Completed';
+        break;
+      case ItineraryStatus.skipped:
+        bg = AppColors.error.withValues(alpha: 0.1); fg = AppColors.error; text = 'Skipped';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+      child: Text(text, style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _buildMapPreview(ItineraryItem stop) {
+    List<LatLng> points = [];
+    if (stop.encodedPolyline != null) {
+      final decoded = PolylinePoints.decodePolyline(stop.encodedPolyline!);
+      points = decoded.map((p) => LatLng(p.latitude, p.longitude)).toList();
+    }
+
+    return SizedBox(
+      height: 120,
+      width: double.infinity,
+      child: Stack(
+        children: [
+          FlutterMap(
+            options: MapOptions(
+              initialCenter: LatLng(stop.latitude, stop.longitude),
+              initialZoom: 14.0,
+              interactionOptions: const InteractionOptions(flags: InteractiveFlag.none), // static preview
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.tourvia.app',
+              ),
+              if (points.isNotEmpty)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(points: points, strokeWidth: 4.0, color: AppColors.primary),
+                  ],
+                ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: LatLng(stop.latitude, stop.longitude),
+                    width: 40,
+                    height: 40,
+                    child: const Icon(Icons.location_on, color: AppColors.error, size: 30),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Positioned.fill(
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  // In the future, this could open a full-screen map modal.
+                },
               ),
             ),
           ),

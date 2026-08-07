@@ -1,82 +1,95 @@
-﻿# <a id="_Toc134134067"></a>3\.0 Technical Background
+# <a id="_Toc134134067"></a>3\.0 Technical Background
 
 ## <a id="_Toc134134068"></a>3\.1 Development
 
-### <a id="_Toc134134069"></a>3\.1\.1\. Hardware
+### <a id="_Toc134134069"></a>3\.1\.1 Hardware
 
-__3\.1\.1\.1 Laptop __
+__3\.1\.1\.1 Laptop__
 
-	A laptop is a personal computer in a portable form which is powered by a battery pack or an AC adaptor, which can be used in performing different computing activities\. It is the main facility where developers can write the code, handle assets, and simulate\.
+	A laptop is a personal computer in a portable form which is powered by a battery pack or an AC adaptor, used to perform various software development activities. It is the primary workstation where developers write code, manage assets, configure cloud infrastructure, and emulate mobile devices.
 
-In the development stage, the proponents will be using a laptop to do the coding, design, and testing of the mobile application\. The processor in the laptop will be AMD Ryzen 5 8645HS with 4\.30 GHz Radeon 760M Graphics, 16\.0 GB RAM and the operating system will be 64\-bit based with an x64 processor\. These requirements were powerful enough to carry out the application development, database management, API integration and testing of the system in the project\.
+In the development stage, the proponents utilized a laptop to execute coding, database setup, UI design, API integration, and system testing. The hardware specification of the laptop includes an AMD Ryzen 5 8645HS processor (4.30 GHz), Radeon 760M Graphics, 16.0 GB RAM, and a 64-bit operating system based on an x64 processor. These system resources provided sufficient computing power to seamlessly handle mobile emulators, local server environments, and cross-platform builds.
 
-__3\.1\.1\.2 Mobile Devices__ 
+__3\.1\.1\.2 Mobile Devices__
 
-	Mobile devices are computer devices that are touch screen and connect to the cellular system or Wi\-Fi networks and can be carried in the hand just like smartphones or tablets\. They are necessary to test the behavior of an application in a real\-world environment as compared to a computer emulator\. Android smartphones and IOS device will be used to test the application in regards to its functionality and user interface\. The mobile device testing will be done to verify that the application works well and meets the GPS system and also will fit various screen sizes\.
+	Mobile devices are portable touchscreen computing devices capable of connecting to cellular networks or Wi-Fi. They are essential to test the behavior, performance, and responsiveness of an application in a physical, real-world environment as opposed to a software emulator. Android smartphones and iOS devices were utilized to test system functionality, user interface responsiveness, GPS tracking accuracy, battery efficiency, and hardware features (such as camera and location services) across various screen dimensions.
 
-### <a id="_Toc134134070"></a>3\.1\.2 Software 
+### <a id="_Toc134134070"></a>3\.1\.2 Software
 
-__*3\.1\.2\.1 Android Studio*__
+__*3\.1\.2\.1 Android Studio & Visual Studio Code*__
 
-	Android Studio is the official Integrated Development Environment \(IDE\) for Android app development, based on IntelliJ IDEA\. It provides a specialized interface for developers to write code, design layouts, and manage project files\.
-
-The proponent will be used android studio for testing and debugging the mobile application\. It will provided tools such as emulators and debugging features that helped ensure system stability and performance\. 
+	Android Studio and Visual Studio Code (VS Code) served as the primary Integrated Development Environments (IDEs) for developing, debugging, and building the TourVia mobile application. Android Studio provided Android SDK management, Gradle build controls, and device emulators. Visual Studio Code offered lightweight, high-performance code editing, Flutter and Dart extensions, integrated terminal controls, and rapid hot reload functionality.
 
 __*3\.1\.2\.2 Flutter*__
 
-	Flutter is a Google\-created open\-source software development kit in the form of UI software\. It is employed to create cross\-platform Android, iOS, Linux, macOS, Windows, Google Fuchsia, and web applications based on one codebase\. The proponent will apply flutter as the primary model of mobile application development\. It will allow the proponents develop user friendly and responsive interface using a single codebase that will support the efficiency in development\.
+	Flutter is an open-source UI software development kit (SDK) developed by Google for building natively compiled, cross-platform applications for mobile, web, and desktop from a single codebase. The proponents selected Flutter as the main development framework to build a responsive, modern, and high-performance user interface for both Android and iOS platforms efficiently.
 
 __*3\.1\.2\.3 Dart*__
 
-	Dart is a fast application programming language that is written client\-optimized\. It is created to develop UI and provides such features as hot reload that permits the developer to see the changes to the code automatically without having to restart the app\. Dart is the programming language that will be used with Flutter by the proponent\. It will be used to apply the logic of the application, navigation and integration of such features in the system like monitoring attendance, chat, and location\.
+	Dart is an open-source, client-optimized programming language created by Google. Used natively with Flutter, Dart powers the complete application logic, state management, screen navigation, data parsing, and feature integration, including tour session management, attendance tracking, live map tracking, emergency SOS alerts, and chatbot communication.
 
-__*3\.1\.2\.4 Firebase*__
+__*3\.1\.2\.4 Firebase Platform*__
 
-	Firebase is a Google\-created platform that is designed to build mobile and web apps\. It offers a range of services such as cloud storage, real\-time databases, and user authentication services which scale automatically\. Firebase will be employed by the proponent as the authentication, real\-time database management, and cloud storage system\. It will facilitate user authentication, access code validation, chat option and real time synchronization of data\. 
+	Firebase is a comprehensive Backend-as-a-Service (BaaS) platform developed by Google. TourVia integrates several Firebase cloud services to power its backend infrastructure:
+	• **Firebase Authentication**: Provides secure user registration, authentication, session management, and role-based access control for tour guides and tourists.
+	• **Cloud Firestore**: Serves as the real-time NoSQL cloud database storing tour session details, itineraries, attendance logs, live chat messages, access codes, user profile records, and emergency SOS alerts.
+	• **Firebase Storage**: Provides cloud object storage for user avatar images and uploaded Department of Tourism (DOT) Tour Guide accreditation photos.
+	• **Firebase Cloud Messaging (FCM)**: Handles push notifications and real-time message broadcasting for safety warnings, SOS emergency alerts, and tour updates.
 
-__*3\.1\.2\.5 Mapbox*__
+__*3\.1\.2\.5 OpenStreetMap & flutter_map*__
 
-	Mapbox is a company that offers custom map services and location services online\. It provides software developers with powerful mapping API and SDK to build accurate, interactive, and highly configurable map experiences\. The proponent will incorporate Mapbox, which will offer real\-time map visualization and location tracking\. It will facilitate GPS\-based applications like tracking of locations of the tourists, geofencing and navigation\.
+	OpenStreetMap (OSM) integrated via the `flutter_map` package provides interactive, open-source tile mapping for real-time map visualization and geolocation features. Combined with `geolocator` and `latlong2` packages, it renders live tourist and tour guide GPS marker locations, tour stop waypoints, and geofence radii without relying on proprietary paid map SDKs.
 
-__*3\.1\.2\.6 Google ML Kit*__
+__*3\.1\.2\.6 Google Gemini 1.5 Flash Vision API*__
 
-	Google ML Kit is a mobile software developer kit that applies machine learning experience on Android and iOS apps\. It consists of different APIs of vision and natural language processing, including text recognition and face detection\. The ID uploading will be supported by Google ML Kit when registering tour guides\. It will aid in uploading identification documents that are to be processed to facilitate verification before the permission of an account is given\.
+	Google Gemini 1.5 Flash Vision API is a multimodal artificial intelligence service capable of analyzing visual and textual data. In TourVia, Gemini Vision powers automated Department of Tourism (DOT) Tour Guide ID verification during guide registration. It inspects official DOT logos, headers, card layout compliance, checks accreditation expiry dates, evaluates image clarity/blur, and extracts guide details.
 
-__*3\.1\.2\.7 OpenAI \(ChatGPT API\)*__
+__*3\.1\.2\.7 OpenAI (ChatGPT API - GPT-4o-mini)*__
 
-	The ChatGPT API of OpenAI gives developers the opportunity to introduce rich language models into their applications\. Such models can comprehend and produce human\-like text depending on the prompts entered in them\. OpenAI ChatGPT API will be applied to implement the chatbot feature\. It will offer tourism related services, destination recommendations and itinerary advice in the Philippines\.
+	OpenAI Chat Completions API utilizing the `gpt-4o-mini` model powers the AI Travel Chatbot assistant in TourVia. Guided by a specialized system prompt restricting responses strictly to Philippine tourism, the assistant provides tourists with real-time destination recommendations, travel tips, local food advice, and cultural information in English and Tagalog.
 
-__*3\.1\.2\.8* Figma__
+__*3\.1\.2\.8 OpenWeatherMap API*__
 
-__	__Figma is a web\-based software that allows for vector graphics editing and prototyping\. The proponents will be used Figma to improve the user interface design and provide guidance during the application development process\.
+	OpenWeatherMap API delivers real-time weather information, current temperature, weather conditions, humidity, precipitation probability, and multi-day weather forecasts for tour destinations, helping tour guides and tourists prepare for outdoor activities.
 
-__*3\.1\.2\.9*__* *__Canva__
+__*3\.1\.2\.9 Figma*__
 
-*	*Canva is a web\-based graphic design platform that enables users to create visual content such as presentations, posters, infographics, and other marketing materials through customizable templates and design tools\. The proponents will used Canva for designing such as icon, logos\. and other graphical components\. 
+	Figma is a cloud-based UI/UX design and prototyping tool. The proponents used Figma to craft screen wireframes, high-fidelity user interface layouts, color schemes, icon sets, and interactive app prototypes prior to development.
 
-__*3\.1\.2\.10 Lucidchart*__
+__*3\.1\.2\.10 Canva*__
 
-__	__Lucidchart is a diagramming software that is based on the web and is used to build system diagrams\. The proponents developed the diagrams with Lucidchart and generated visualizations of the diagram of the TourVia system using Use Case Diagram, Activity Diagram, Sequence Diagram, Fishbone Diagram, and Functional Decomposition Diagram\.
+	Canva is a graphics design platform used by the proponents to design visual assets, application logos, promotional banners, custom graphics, and manuscript illustrations.
 
-__*3\.1\.2\.11 Github:*__  
-	Github will be used as a back up to all changes that made to the project\. It allows the team to push their changes and pull updates from the project, ensuring everyone is working on the latest version and preventing conflicts
+__*3\.1\.2\.11 Lucidchart*__
 
-__*3\.1\.2\.12*__* *__*FlutLab for iOS Testing:*__  
-	FlutLab will be used to test the app on iOS devices\. It’s an online tool that makes it easier to test and build the app for both Android and iOS, especially when working with Flutter\.
+	Lucidchart is a web-based diagramming tool used to construct system architecture and workflow diagrams, including Use Case Diagrams, Activity Diagrams, Sequence Diagrams, Fishbone Diagrams, and Functional Decomposition Diagrams for the TourVia platform.
+
+__*3\.1\.2\.12 GitHub*__
+
+	GitHub is a cloud-based Git repository hosting service used for source code version control, revision history, and collaboration, allowing the development team to push updates, manage code branches, and safeguard project files.
+
+__*3\.1\.2\.13 Auxiliary Flutter Libraries & Utilities*__
+
+	The application incorporates additional specialized Flutter packages to support system features:
+	• **flutter_dotenv**: Securely loads environment variables and API keys (OpenAI, Gemini, OpenWeatherMap) from `.env` files.
+	• **image_picker**: Handles device camera capture and photo gallery selection for ID and profile uploads.
+	• **geolocator**: Provides device GPS coordinates, distance calculations, and real-time position updates.
+	• **audioplayers & vibration**: Plays emergency alarm audio tones and triggers device haptic vibration during SOS alerts.
+	• **url_launcher**: Launches native phone dialer applications for direct emergency contact calls.
 
 ### <a id="_Toc134134071"></a>3\.1\.3 Peopleware
 
-### *3\.1\.3\.1 Proponents*
+__*3\.1\.3\.1 Proponents*__
 
-The proponents will include a team of students who will develop the system\. The project will have each member designated a specific role like programming, documentation, system design, and testing of the project so that the project is completed successfully\.
+	The proponents consist of a team of students who developed, tested, and documented the TourVia system. Each team member performed specific responsibilities including mobile programming, backend architecture, system design, quality assurance, and capstone documentation.
 
 __*3\.1\.3\.2 Capstone Adviser*__
 
-During Capstone 1, Mr\. Adrian Atienza served as the Capstone adviser\. He guided the proponents during the early stage of the system development and helped them understand proper project planning and documentation\. His guidance helped the group build a clear foundation for the project\.
+	Mr. Adrian Atienza served as the Capstone Adviser. He provided technical guidance, academic direction, project management advice, and structural feedback during project planning and manuscript development.
 
-####  __3\.1\.3\.3 Tour Guides and Tourists__
+__*3\.1\.3\.3 Tour Guides and Tourists*__
 
-Tour guides and tourists will serve as the primary users of the system\. Tour guides manage tours and tourists, while tourists will use the application for participation, communication, and safety during guided tours\.
+	Tour guides and tourists serve as the primary target users of the TourVia application. Tour guides use the platform to conduct tours, track attendance, monitor safety, and coordinate schedules. Tourists utilize the app for tour participation, live map navigation, weather monitoring, AI travel assistance, and emergency signaling.
 
 ## 3\.2 Implementation
 
@@ -84,32 +97,28 @@ Tour guides and tourists will serve as the primary users of the system\. Tour gu
 
 __*3\.2\.1\.1 Android Mobile Devices*__
 
-The implementation and demonstration of the system will require Android mobile devices\. These devices will allow the tour guides and visitors to download the application and utilize its services such as map tracking, chat and preview itinerary\. 
+	Android smartphones equipped with hardware GPS sensors, cellular/Wi-Fi connectivity, and digital cameras are required for tour guides and tourists to run the TourVia application during live tour operations.
 
 __*3\.2\.1\.2 iOS Mobile Devices*__
 
-The system shall also be compatible with iOS mobile devices\. iOS devices will enable the tour guides and tourists to experience the same type of features of the system such as communication, viewing of itinerary and location\-based services to ensure that the system is broadly accessible by users\.
+	iOS mobile devices with camera and location capabilities are also supported, allowing Apple users to access the full suit of TourVia features including location tracking, chat, weather monitoring, and safety alerts.
 
 ### 3\.2\.2 Software
 
-### 	*3\.2\.2\.1 Android Operating System*
+__*3\.2\.2\.1 Android Operating System*__
 
-### The application will be in support of the Android operating system\. Android 10 or higher should be installed in users devices so that the application could be properly functional, secure, and optimally perform\.
+	The mobile application targets Android OS version 10 (API level 29) or higher to ensure optimal performance, security patch compatibility, location permissions handling, and smooth UI rendering.
 
-### *	3\.2\.2\.2 iOS Operating System*
+__*3\.2\.2\.2 iOS Operating System*__
 
-### The application will also be compatible with iOS operating system\. The application can only run smoothly on the devices with iOS 17 and above installed to enable the user to utilize the full application without compatibility problems\.
+	The mobile application is compatible with iOS version 14.0 or higher to deliver consistent cross-platform user experience across Apple mobile hardware.
 
 ### 3\.2\.3 Peopleware
 
-__*3\.2\.3\.1 Tour Guide *__
+__*3\.2\.3\.1 Tour Guide*__
 
-The administrator of the system will be the Tour Guide\. They will be in charge of tour management, attendance, tracking the whereabouts of tourists, communication with the tourists and safety measures in the tour\.
+	The Tour Guide acts as the tour administrator in the system. They oversee tour creation, access code generation, tourist attendance monitoring, real-time map location tracking, emergency alert response, and group messaging.
 
 __*3\.2\.3\.2 Tourists*__
 
-The users will be the Local and International tourists who use the access codes that are issued by the tour guide to access the system\. Through it, they will be able to see itineraries, get safety warnings, contact the tour guide, and get tourist information
-
-	
-
-
+	Tourists are the end-users who join tours using access codes provided by their tour guide. They access live itineraries, receive safety alerts, view destination weather, interact with the AI chatbot, and trigger emergency SOS signals when assistance is required.

@@ -3,11 +3,17 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'package:firebase_auth/firebase_auth.dart';
+
+import 'core/models/tourist_session.dart';
+import 'core/services/auth_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_colors.dart';
 import 'features/auth/screens/role_selection_screen.dart';
 import 'features/auth/screens/in_app_password_reset_screen.dart';
+import 'features/tour_guide/screens/tour_guide_dashboard_screen.dart';
+import 'features/tourist/screens/tourist_dashboard_screen.dart';
 import 'features/sos/screens/sos_screen.dart';
 import 'firebase_options.dart';
 
@@ -60,7 +66,7 @@ class _TourviaAppState extends State<TourviaApp> {
   /// Simple router: reads the `type` field in the notification data payload.
   void _routeToScreen(Map<String, dynamic> data) {
     final type = data['type'] as String?;
-    final sessionId = data['sessionId'] as String? ?? 'demo-session-001';
+    final sessionId = data['sessionId'] as String? ?? AuthService.currentUser?.uid ?? '';
 
     final nav = navigatorKey.currentState;
     if (nav == null) return;
@@ -101,10 +107,79 @@ class _TourviaAppState extends State<TourviaApp> {
         }
         return null; // Let Flutter handle other routes normally
       },
-      home: const RoleSelectionScreen(),
+      home: const AuthGate(),
       builder: (context, child) {
         // Wrap the whole app in a foreground notification banner listener
         return _FcmBannerWrapper(child: child!);
+      },
+    );
+  }
+}
+
+/// Automatically redirects to the correct dashboard if the user is already logged in.
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSessions();
+  }
+
+  Future<void> _checkSessions() async {
+    // Check for tourist session first
+    await TouristSessionManager.loadSession();
+    if (TouristSessionManager.isLoggedIn) {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const TouristDashboardScreen()),
+        );
+      }
+      return;
+    }
+
+    // If no tourist session, we just rely on Firebase auth stream for Tour Guides.
+    // However, since Firebase Auth takes a moment to initialize the current user,
+    // we just stop loading and let the StreamBuilder handle the rest.
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+
+    return StreamBuilder<User?>(
+      stream: AuthService.authStateChanges,
+      builder: (context, snapshot) {
+        // While waiting for auth stream
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+          );
+        }
+
+        // If a Firebase user exists, it's a Tour Guide
+        if (snapshot.hasData && snapshot.data != null) {
+          return const TourGuideDashboardScreen();
+        }
+
+        // Otherwise, show Role Selection Screen
+        return const RoleSelectionScreen();
       },
     );
   }
@@ -179,7 +254,7 @@ class _FcmBannerWrapperState extends State<_FcmBannerWrapper> {
             final nav = navigatorKey.currentState;
             final type = message.data['type'] as String?;
             final sessionId =
-                message.data['sessionId'] as String? ?? 'demo-session-001';
+                message.data['sessionId'] as String? ?? AuthService.currentUser?.uid ?? '';
 
             if (nav == null) return;
             if (type == 'sos') {

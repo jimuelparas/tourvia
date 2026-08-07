@@ -15,7 +15,7 @@ class SosScreen extends StatefulWidget {
 
   const SosScreen({
     super.key,
-    this.sessionId = 'demo-session-001',
+    required this.sessionId,
   });
 
   @override

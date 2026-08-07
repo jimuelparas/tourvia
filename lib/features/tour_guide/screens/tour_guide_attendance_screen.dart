@@ -19,7 +19,7 @@ class TourGuideAttendanceScreen extends StatefulWidget {
 
   const TourGuideAttendanceScreen({
     super.key,
-    this.sessionId = 'demo-session-001',
+    required this.sessionId,
   });
 
   @override
@@ -120,7 +120,7 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
           actions: [
             IconButton(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const TourGuideMapScreen(),
+                builder: (_) => TourGuideMapScreen(sessionId: widget.sessionId),
               )),
               icon:
                   const Icon(Icons.map_rounded, color: AppColors.primary),

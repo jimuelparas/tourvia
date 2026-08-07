@@ -69,7 +69,7 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
     }
 
     final session = TouristSessionManager.current;
-    final sessionId = session?.sessionId ?? 'demo-session-001';
+    final sessionId = session?.sessionId ?? '';
     final touristId = session?.codeDocId ?? 'demo-tourist-001';
     final touristName = session?.touristName ?? 'Tourist';
 
@@ -164,14 +164,25 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
   }
 
   Future<void> _routeToGuide() async {
-    final url =
+    // Try geo: URI first (opens native maps app)
+    final geoUri = Uri.parse(
+        'geo:${_guidePosition.latitude},${_guidePosition.longitude}'
+        '?q=${_guidePosition.latitude},${_guidePosition.longitude}');
+    // Fallback: Google Maps directions link
+    final mapsUri = Uri.parse(
         'https://www.google.com/maps/dir/?api=1'
         '&origin=${_touristPosition.latitude},${_touristPosition.longitude}'
         '&destination=${_guidePosition.latitude},${_guidePosition.longitude}'
-        '&travelmode=walking';
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+        '&travelmode=walking');
+    try {
+      if (await canLaunchUrl(geoUri)) {
+        await launchUrl(geoUri);
+      } else {
+        await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      // Final fallback — force external browser
+      await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
     }
   }
 

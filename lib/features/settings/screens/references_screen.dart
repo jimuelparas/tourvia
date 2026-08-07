@@ -122,7 +122,7 @@ class ReferencesScreen extends StatelessWidget {
             ),
             _buildReferenceCard(
               icon: Icons.smart_toy_rounded,
-              title: 'OpenAI API',
+              title: 'Google Gemini API',
               description: 'AI-powered chatbot for answering tourist queries '
                   'about Philippine destinations.',
               color: AppColors.primary,

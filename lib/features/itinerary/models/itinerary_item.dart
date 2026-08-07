@@ -1,6 +1,9 @@
 /// Attendance statuses for a passenger at a specific stop.
 enum AttendanceStatus { present, absent, late }
 
+/// Status of the itinerary stop.
+enum ItineraryStatus { upcoming, ongoing, completed, skipped }
+
 /// Represents one passenger's attendance record at a stop.
 class PassengerAttendance {
   final String passengerId;
@@ -37,6 +40,16 @@ class ItineraryItem {
   final String endTime;
   final String notes;
 
+  // ── Added properties for Routing & Map ──
+  final double latitude;
+  final double longitude;
+  final ItineraryStatus status;
+  final double? distanceToNext; // in meters
+  final int? durationToNext; // in seconds
+  final String? encodedPolyline; // for route path to next stop
+  final double? routeEndLatitude; // used to detect if next stop moved
+  final double? routeEndLongitude;
+
   /// Attendance records for every registered passenger at this stop.
   final List<PassengerAttendance> attendance;
 
@@ -47,6 +60,14 @@ class ItineraryItem {
     required this.startTime,
     required this.endTime,
     this.notes = '',
+    this.latitude = 0.0,
+    this.longitude = 0.0,
+    this.status = ItineraryStatus.upcoming,
+    this.distanceToNext,
+    this.durationToNext,
+    this.encodedPolyline,
+    this.routeEndLatitude,
+    this.routeEndLongitude,
     List<PassengerAttendance>? attendance,
   }) : attendance = attendance ?? [];
 
@@ -66,6 +87,14 @@ class ItineraryItem {
     String? startTime,
     String? endTime,
     String? notes,
+    double? latitude,
+    double? longitude,
+    ItineraryStatus? status,
+    double? distanceToNext,
+    int? durationToNext,
+    String? encodedPolyline,
+    double? routeEndLatitude,
+    double? routeEndLongitude,
     List<PassengerAttendance>? attendance,
   }) {
     return ItineraryItem(
@@ -75,6 +104,14 @@ class ItineraryItem {
       startTime: startTime ?? this.startTime,
       endTime: endTime ?? this.endTime,
       notes: notes ?? this.notes,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      status: status ?? this.status,
+      distanceToNext: distanceToNext ?? this.distanceToNext,
+      durationToNext: durationToNext ?? this.durationToNext,
+      encodedPolyline: encodedPolyline ?? this.encodedPolyline,
+      routeEndLatitude: routeEndLatitude ?? this.routeEndLatitude,
+      routeEndLongitude: routeEndLongitude ?? this.routeEndLongitude,
       attendance: attendance ?? List.from(this.attendance),
     );
   }

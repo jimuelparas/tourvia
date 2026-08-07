@@ -79,7 +79,8 @@ class AccessCodeService {
       codeDocId: codeDocId,
     );
 
-    TouristSessionManager.set(session);
+    // Store globally in memory & SharedPreferences for easy access by other screens
+    await TouristSessionManager.set(session);
     return session;
   }
 

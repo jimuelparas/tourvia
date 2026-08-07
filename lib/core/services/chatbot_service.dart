@@ -1,18 +1,14 @@
-import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
+import 'package:google_generative_ai/google_generative_ai.dart';
 
-/// Service that connects to OpenAI's Chat Completions API (Step 11 / US-21).
+/// Service that connects to Google Gemini (Step 11 / US-21).
 ///
 /// Enforces a Philippines-only tourism scope via the system prompt.
 /// API key is loaded from the `.env` asset file via flutter_dotenv.
 class ChatbotService {
   ChatbotService._();
 
-  static const String _endpoint =
-      'https://api.openai.com/v1/chat/completions';
-
-  static const String _model = 'gpt-4o-mini';
+  static const String _modelName = 'gemini-1.5-flash';
 
   /// System prompt that restricts the AI to Philippine tourism topics only.
   static const String _systemPrompt = '''
@@ -32,46 +28,41 @@ Guidelines:
 - Respond in the same language the user uses (Filipino or English).
 ''';
 
-  /// Sends [userMessage] to OpenAI and returns the assistant's reply.
+  /// Sends [userMessage] to Gemini and returns the assistant's reply.
   ///
   /// Throws an [Exception] on network or API errors.
   static Future<String> ask(String userMessage) async {
-    final apiKey = dotenv.env['OPENAI_API_KEY'];
+    final apiKey = dotenv.env['GEMINI_API_KEY'] ?? dotenv.env['OPENAI_API_KEY'];
     if (apiKey == null || apiKey.isEmpty) {
-      throw Exception('OpenAI API key not found in .env file.');
+      throw Exception('GEMINI_API_KEY not found in .env file.');
     }
 
-    final response = await http.post(
-      Uri.parse(_endpoint),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $apiKey',
-      },
-      body: jsonEncode({
-        'model': _model,
-        'messages': [
-          {'role': 'system', 'content': _systemPrompt},
-          {'role': 'user', 'content': userMessage},
-        ],
-        'temperature': 0.7,
-        'max_tokens': 512,
-      }),
-    );
+    try {
+      final model = GenerativeModel(
+        model: _modelName,
+        apiKey: apiKey,
+        systemInstruction: Content.system(_systemPrompt),
+        generationConfig: GenerationConfig(
+          temperature: 0.7,
+          maxOutputTokens: 512,
+        ),
+      );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final choices = data['choices'] as List<dynamic>;
-      if (choices.isEmpty) throw Exception('Empty response from OpenAI.');
-      final message = choices[0]['message'] as Map<String, dynamic>;
-      return (message['content'] as String).trim();
-    } else if (response.statusCode == 429) {
-      throw Exception('Rate limit reached. Please wait a moment and try again.');
-    } else if (response.statusCode == 401) {
-      throw Exception('Invalid API key. Please check your .env configuration.');
-    } else {
-      final body = jsonDecode(response.body);
-      final errMsg = body['error']?['message'] ?? 'Unknown error';
-      throw Exception('OpenAI API error (${response.statusCode}): $errMsg');
+      final content = [Content.text(userMessage)];
+      final response = await model.generateContent(content);
+
+      if (response.text == null || response.text!.isEmpty) {
+        throw Exception('Empty response from Gemini.');
+      }
+      return response.text!.trim();
+    } catch (e) {
+      if (e.toString().contains('429')) {
+        throw Exception('Rate limit reached. Please wait a moment and try again.');
+      } else if (e.toString().contains('API key not valid') || e.toString().contains('400')) {
+        throw Exception('Invalid API key. Please check your .env configuration.');
+      } else {
+        throw Exception('Gemini API error: \$e');
+      }
     }
   }
 }

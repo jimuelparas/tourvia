@@ -19,7 +19,7 @@ class TourGuideStopAttendanceScreen extends StatefulWidget {
   const TourGuideStopAttendanceScreen({
     super.key,
     required this.stop,
-    this.sessionId = 'demo-session-001',
+    required this.sessionId,
   });
 
   @override
@@ -429,14 +429,17 @@ class _TourGuideStopAttendanceScreenState
                       const SizedBox(width: 8),
                       Icon(_statusIcon(status), size: 12, color: color),
                       const SizedBox(width: 4),
-                      Text(
-                        checkIn != null
-                            ? '${_statusLabel(status)} · $checkIn'
-                            : _statusLabel(status),
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: color,
-                            fontWeight: FontWeight.w500),
+                      Expanded(
+                        child: Text(
+                          checkIn != null
+                              ? '${_statusLabel(status)} · $checkIn'
+                              : _statusLabel(status),
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: color,
+                              fontWeight: FontWeight.w500),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),

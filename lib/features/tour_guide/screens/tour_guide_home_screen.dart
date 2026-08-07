@@ -32,6 +32,9 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
   late final AnimationController _animationController;
   late final Animation<double> _fadeAnimation;
 
+  // Session ID derived from the logged-in guide's UID for data isolation
+  late final String _sessionId;
+
   // SOS live monitoring
   StreamSubscription<List<SosAlert>>? _sosSubscription;
   List<SosAlert> _activeAlerts = [];
@@ -39,6 +42,8 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
   @override
   void initState() {
     super.initState();
+    _sessionId = AuthService.currentUser!.uid;
+
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -53,14 +58,14 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
     final guide = AuthService.currentUser;
     if (guide != null) {
       TourSessionService.updateGuideInfo(
-        'demo-session-001',
+        _sessionId,
         guide.uid,
         guide.displayName ?? 'Guide',
       );
     }
 
     // Listen for live SOS alerts from tourists
-    _sosSubscription = SosService.watchActiveAlerts('demo-session-001')
+    _sosSubscription = SosService.watchActiveAlerts(_sessionId)
         .listen((alerts) {
       if (!mounted) return;
       final prevCount = _activeAlerts.length;
@@ -96,8 +101,8 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const SosScreen(
-                      sessionId: 'demo-session-001'),
+                  builder: (_) => SosScreen(
+                      sessionId: _sessionId),
                 ),
               ),
             ),
@@ -157,7 +162,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => const SosScreen(sessionId: 'demo-session-001'),
+          builder: (_) => SosScreen(sessionId: _sessionId),
         ),
       ),
       child: Container(
@@ -280,7 +285,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
 
   Widget _buildActiveTourBanner() {
     return StreamBuilder<TourSession>(
-      stream: TourSessionService.watchSession('demo-session-001'),
+      stream: TourSessionService.watchSession(_sessionId),
       builder: (context, sessionSnapshot) {
         final session = sessionSnapshot.data;
         final tourName = session?.tourName ?? 'Unnamed Tour';
@@ -290,7 +295,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
             : 'Day 1 of 3';
 
         return StreamBuilder<List<TouristRecord>>(
-          stream: AttendanceService.watchRoster('demo-session-001'),
+          stream: AttendanceService.watchRoster(_sessionId),
           builder: (context, rosterSnapshot) {
             final touristCount = rosterSnapshot.data?.length ?? 0;
             final countStr =
@@ -302,8 +307,8 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                   : () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const TourGuideItineraryScreen(
-                            sessionId: 'demo-session-001',
+                          builder: (_) => TourGuideItineraryScreen(
+                            sessionId: _sessionId,
                           ),
                         ),
                       ),
@@ -570,7 +575,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
     );
 
     try {
-      await TourSessionService.endTour('demo-session-001');
+      await TourSessionService.endTour(_sessionId);
       if (!mounted) return;
       Navigator.pop(context); // dismiss loading
       ScaffoldMessenger.of(context).showSnackBar(
@@ -654,8 +659,8 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const TourGuideItineraryScreen(
-                sessionId: 'demo-session-001',
+              builder: (_) => TourGuideItineraryScreen(
+                sessionId: _sessionId,
               ),
             ),
           ),
@@ -668,8 +673,8 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const TourGuideAttendanceScreen(
-                sessionId: 'demo-session-001',
+              builder: (_) => TourGuideAttendanceScreen(
+                sessionId: _sessionId,
               ),
             ),
           ),
@@ -681,7 +686,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           color: AppColors.accentTeal,
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const TourGuideMapScreen()),
+            MaterialPageRoute(builder: (_) => TourGuideMapScreen(sessionId: _sessionId)),
           ),
         ),
         _buildModuleCard(
@@ -692,9 +697,9 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const GroupChatScreen(
+              builder: (_) => GroupChatScreen(
                 isCurrentUserGuide: true,
-                sessionId: 'demo-session-001',
+                sessionId: _sessionId,
               ),
             ),
           ),
@@ -717,8 +722,8 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const SosScreen(
-                sessionId: 'demo-session-001',
+              builder: (_) => SosScreen(
+                sessionId: _sessionId,
               ),
             ),
           ),
@@ -740,11 +745,11 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           color: AppColors.primaryActive,
           onTap: () => Navigator.push(
             context,
-            // TODO (Step 4+): Replace 'demo-session-001' with the real active
+            // TODO (Step 4+): Replace _sessionId with the real active
             // session ID from the session management feature once built.
             MaterialPageRoute(
-              builder: (_) => const TourGuideAccessLogScreen(
-                sessionId: 'demo-session-001',
+              builder: (_) => TourGuideAccessLogScreen(
+                sessionId: _sessionId,
               ),
             ),
           ),

@@ -5,7 +5,7 @@ import '../../../core/services/chatbot_service.dart';
 import '../../chat/models/chat_message.dart';
 
 /// Screen for the AI Chatbot Assistant (US-21).
-/// Uses the real OpenAI API (gpt-4o-mini) scoped to Philippine tourism.
+/// Uses the Google Gemini API (gemini-1.5-flash) scoped to Philippine tourism.
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
 
@@ -162,7 +162,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  _isTyping ? 'Typing...' : 'Powered by GPT-4o mini',
+                  _isTyping ? 'Typing...' : 'Powered by Google Gemini',
                   style: TextStyle(
                     fontSize: 11,
                     color: _isTyping

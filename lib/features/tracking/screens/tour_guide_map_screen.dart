@@ -15,7 +15,7 @@ import '../../../core/services/location_service.dart';
 class TourGuideMapScreen extends StatefulWidget {
   final String sessionId;
 
-  const TourGuideMapScreen({super.key, this.sessionId = 'demo-session-001'});
+  const TourGuideMapScreen({super.key, required this.sessionId});
 
   @override
   State<TourGuideMapScreen> createState() => _TourGuideMapScreenState();
@@ -190,14 +190,25 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   }
 
   Future<void> _navigateTo(UserLocation tourist) async {
-    final url =
+    // Try geo: URI first (opens native maps app)
+    final geoUri = Uri.parse(
+        'geo:${tourist.latitude},${tourist.longitude}'
+        '?q=${tourist.latitude},${tourist.longitude}');
+    // Fallback: Google Maps directions link
+    final mapsUri = Uri.parse(
         'https://www.google.com/maps/dir/?api=1'
         '&origin=${_guidePosition.latitude},${_guidePosition.longitude}'
         '&destination=${tourist.latitude},${tourist.longitude}'
-        '&travelmode=walking';
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+        '&travelmode=walking');
+    try {
+      if (await canLaunchUrl(geoUri)) {
+        await launchUrl(geoUri);
+      } else {
+        await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      // Final fallback — force external browser
+      await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
     }
   }
 

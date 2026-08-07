@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../features/itinerary/models/itinerary_item.dart';
+import '../services/routing_service.dart';
 
 /// Service for all itinerary CRUD operations (Step 5).
 ///
@@ -36,8 +37,19 @@ class ItineraryService {
       'endTime': item.endTime,
       'notes': item.notes,
       'order': nextOrder,
+      'latitude': item.latitude,
+      'longitude': item.longitude,
+      'status': item.status.name,
+      'distanceToNext': item.distanceToNext,
+      'durationToNext': item.durationToNext,
+      'encodedPolyline': item.encodedPolyline,
+      'routeEndLatitude': item.routeEndLatitude,
+      'routeEndLongitude': item.routeEndLongitude,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    // Run route recalculation async (fire and forget)
+    recalculateRoutes(sessionId);
 
     return ref.id;
   }
@@ -54,13 +66,24 @@ class ItineraryService {
       'startTime': item.startTime,
       'endTime': item.endTime,
       'notes': item.notes,
+      'latitude': item.latitude,
+      'longitude': item.longitude,
+      'status': item.status.name,
+      'distanceToNext': item.distanceToNext,
+      'durationToNext': item.durationToNext,
+      'encodedPolyline': item.encodedPolyline,
+      'routeEndLatitude': item.routeEndLatitude,
+      'routeEndLongitude': item.routeEndLongitude,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    recalculateRoutes(sessionId);
   }
 
   /// Deletes a stop document from Firestore.
   static Future<void> deleteStop(String sessionId, String stopId) async {
     await _col(sessionId).doc(stopId).delete();
+    recalculateRoutes(sessionId);
   }
 
   /// Re-orders stops by writing a new [order] field to each doc.
@@ -77,6 +100,7 @@ class ItineraryService {
       );
     }
     await batch.commit();
+    recalculateRoutes(sessionId);
   }
 
   // ── Shared: Real-time stream ─────────────────────────────
@@ -98,6 +122,12 @@ class ItineraryService {
     final ts = data['date'];
     final date = ts is Timestamp ? ts.toDate() : DateTime.now();
 
+    final statusStr = data['status'] as String? ?? 'upcoming';
+    final status = ItineraryStatus.values.firstWhere(
+      (e) => e.name == statusStr,
+      orElse: () => ItineraryStatus.upcoming,
+    );
+
     return ItineraryItem(
       id: doc.id,
       destinationName: data['destinationName'] as String? ?? '',
@@ -105,6 +135,76 @@ class ItineraryService {
       startTime: data['startTime'] as String? ?? '',
       endTime: data['endTime'] as String? ?? '',
       notes: data['notes'] as String? ?? '',
+      latitude: (data['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (data['longitude'] as num?)?.toDouble() ?? 0.0,
+      status: status,
+      distanceToNext: (data['distanceToNext'] as num?)?.toDouble(),
+      durationToNext: (data['durationToNext'] as num?)?.toInt(),
+      encodedPolyline: data['encodedPolyline'] as String?,
+      routeEndLatitude: (data['routeEndLatitude'] as num?)?.toDouble(),
+      routeEndLongitude: (data['routeEndLongitude'] as num?)?.toDouble(),
     );
+  }
+
+  // ── Route Recalculation ──────────────────────────────────
+
+  /// Recalculates routes for adjacent stops if they have moved or don't have a route.
+  static Future<void> recalculateRoutes(String sessionId) async {
+    final snap = await _col(sessionId).orderBy('order').get();
+    if (snap.docs.isEmpty) return;
+
+    final stops = snap.docs.map(_fromDoc).toList();
+    final batch = _db.batch();
+    bool hasUpdates = false;
+
+    for (int i = 0; i < stops.length; i++) {
+      final current = stops[i];
+      if (i < stops.length - 1) {
+        final next = stops[i + 1];
+        // Check if we need to fetch new route
+        // We recalculate if: routeEndLatitude != next.latitude OR routeEndLongitude != next.longitude OR encodedPolyline is null
+        // And we only calculate if both have valid coordinates
+        if (current.latitude != 0.0 && next.latitude != 0.0) {
+          if (current.routeEndLatitude != next.latitude ||
+              current.routeEndLongitude != next.longitude ||
+              current.encodedPolyline == null) {
+            
+            final route = await RoutingService.getRoute(
+              startLat: current.latitude,
+              startLng: current.longitude,
+              endLat: next.latitude,
+              endLng: next.longitude,
+            );
+
+            if (route != null) {
+              batch.update(_col(sessionId).doc(current.id), {
+                'distanceToNext': route['distance'],
+                'durationToNext': route['duration'],
+                'encodedPolyline': route['polyline'],
+                'routeEndLatitude': next.latitude,
+                'routeEndLongitude': next.longitude,
+              });
+              hasUpdates = true;
+            }
+          }
+        }
+      } else {
+        // Last stop should have no route to next
+        if (current.encodedPolyline != null || current.distanceToNext != null) {
+          batch.update(_col(sessionId).doc(current.id), {
+            'distanceToNext': FieldValue.delete(),
+            'durationToNext': FieldValue.delete(),
+            'encodedPolyline': FieldValue.delete(),
+            'routeEndLatitude': FieldValue.delete(),
+            'routeEndLongitude': FieldValue.delete(),
+          });
+          hasUpdates = true;
+        }
+      }
+    }
+
+    if (hasUpdates) {
+      await batch.commit();
+    }
   }
 }

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TOURVIA — Auth Action</title>
+  <meta name="robots" content="noindex" />
+  <script>
+    // Firebase Auth action handler — routes to correct page based on mode
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+
+    switch (mode) {
+      case 'resetPassword':
+        window.location.replace('reset-password.html' + window.location.search);
+        break;
+      case 'verifyEmail':
+        // Future: add custom email verification page
+        window.location.replace('https://tourvia-8fa8c.firebaseapp.com/__/auth/action' + window.location.search);
+        break;
+      default:
+        window.location.replace('https://tourvia-8fa8c.firebaseapp.com/__/auth/action' + window.location.search);
+    }
+  </script>
+</head>
+<body>
+  <p style="font-family:sans-serif;text-align:center;padding:48px;color:#64748B;">Redirecting…</p>
+</body>
+</html>

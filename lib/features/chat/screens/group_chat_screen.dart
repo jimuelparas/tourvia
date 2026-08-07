@@ -18,7 +18,7 @@ class GroupChatScreen extends StatefulWidget {
   const GroupChatScreen({
     super.key,
     this.isCurrentUserGuide = false,
-    this.sessionId = 'demo-session-001',
+    required this.sessionId,
   });
 
   @override

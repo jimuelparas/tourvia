@@ -64,7 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
               // Perform real logout
               if (TouristSessionManager.isLoggedIn) {
-                TouristSessionManager.clear();
+                await TouristSessionManager.clear();
               } else if (AuthService.currentUser != null) {
                 await AuthService.signOut();
               }

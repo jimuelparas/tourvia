@@ -8,6 +8,7 @@ import '../../../core/services/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../tourist/screens/tourist_dashboard_screen.dart';
 import '../widgets/custom_text_field.dart';
+import 'terms_and_conditions_screen.dart';
 
 /// Tourist login screen via access code (US-04).
 ///
@@ -104,7 +105,7 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
           _isSubmitting = false;
           _validatedCodeDoc = codeDoc;
         });
-        _navigateToDashboard();
+        _showTermsAndConditions();
       } else {
         setState(() {
           _isSubmitting = false;
@@ -224,7 +225,7 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
                             );
                             if (!rootContext.mounted) return;
                             navigator.pop(); // Close sheet
-                            _navigateToDashboard();
+                            _showTermsAndConditions();
                           } catch (_) {
                             if (!rootContext.mounted) return;
                             setSheetState(() => isClaiming = false);
@@ -280,6 +281,20 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
           ),
         );
       },
+    );
+  }
+
+  void _showTermsAndConditions() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TermsAndConditionsScreen(
+          onAccepted: () {
+            // Pop the T&C screen, then navigate to the dashboard
+            Navigator.of(context).pop();
+            _navigateToDashboard();
+          },
+        ),
+      ),
     );
   }
 

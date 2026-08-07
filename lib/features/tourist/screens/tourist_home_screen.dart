@@ -90,7 +90,7 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
   }
 
   Widget _buildMainActionCard() {
-    final sessionId = TouristSessionManager.current?.sessionId ?? 'demo-session-001';
+    final sessionId = TouristSessionManager.current?.sessionId ?? '';
 
     return StreamBuilder<TourSession>(
       stream: TourSessionService.watchSession(sessionId),
@@ -235,7 +235,7 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
             MaterialPageRoute(
               builder: (_) => GroupChatScreen(
                 isCurrentUserGuide: false,
-                sessionId: TouristSessionManager.current?.sessionId ?? 'demo-session-001',
+                sessionId: TouristSessionManager.current?.sessionId ?? '',
               ),
             ),
           ),
@@ -259,7 +259,7 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
             context,
             MaterialPageRoute(
               builder: (_) => SosScreen(
-                sessionId: TouristSessionManager.current?.sessionId ?? 'demo-session-001',
+                sessionId: TouristSessionManager.current?.sessionId ?? '',
               ),
             ),
           ),

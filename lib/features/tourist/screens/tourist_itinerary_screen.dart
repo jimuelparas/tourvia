@@ -40,7 +40,7 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
   void initState() {
     super.initState();
     final session = TouristSessionManager.current;
-    _sessionId = session?.sessionId ?? 'demo-session-001';
+    _sessionId = session?.sessionId ?? '';
     _myTouristId = session?.codeDocId ?? '';
 
     _stopsSub =
