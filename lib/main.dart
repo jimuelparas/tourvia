@@ -26,7 +26,7 @@ void main() async {
 
   // Load environment variables (API keys) — gracefully skip if missing
   try {
-    await dotenv.load(fileName: '.env');
+    await dotenv.load(fileName: 'assets/env/.env');
   } catch (_) {
     debugPrint('Warning: .env file not found. AI features will be unavailable.');
   }
