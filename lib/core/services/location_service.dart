@@ -92,8 +92,8 @@ class LocationService {
     // Configure location settings
     final locationSettings = AndroidSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5,
-      intervalDuration: const Duration(seconds: 15),
+      distanceFilter: 1,
+      intervalDuration: const Duration(seconds: 3),
       foregroundNotificationConfig: const ForegroundNotificationConfig(
         notificationText: "Tourvia is tracking your location for safety monitoring.",
         notificationTitle: "Live Location Sharing Active",
