@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -7,6 +8,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/models/tourist_session.dart';
 import '../../../core/services/sos_service.dart';
 import '../../../core/services/location_service.dart';
+import '../../../main.dart';
 
 /// Screen for SOS Emergency Alerts (US-18).
 /// Features a pulsing SOS button, real GPS location, live alert log, and safety tips.
@@ -22,13 +24,23 @@ class SosScreen extends StatefulWidget {
   State<SosScreen> createState() => _SosScreenState();
 }
 
-class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
+class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin, RouteAware {
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
   late final AnimationController _fadeController;
   late final Animation<double> _fadeAnimation;
 
   bool _isSending = false;
+
+  /// Tracks whether this screen is the top visible route.
+  /// SOS ring only triggers when true.
+  bool _isScreenActive = true;
+
+  /// Watches for new SOS alerts to ring the recipient.
+  StreamSubscription<List<SosAlert>>? _sosRingSubscription;
+
+  /// Tracks the previous alert count so we can detect NEW alerts.
+  int _previousAlertCount = -1;
 
   @override
   void initState() {
@@ -49,12 +61,73 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
     );
     _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
     _fadeController.forward();
+
+    // Start listening for incoming SOS alerts to ring the recipient
+    _startSosRingListener();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  /// Called when a new route is pushed on top of this one.
+  @override
+  void didPushNext() {
+    _isScreenActive = false;
+  }
+
+  /// Called when the route on top is popped and this screen becomes visible again.
+  @override
+  void didPopNext() {
+    _isScreenActive = true;
+  }
+
+  /// Listens for new SOS alerts and rings the device ONLY if:
+  /// 1. This screen is actively visible (_isScreenActive)
+  /// 2. The alert was NOT sent by the current user (sender exclusion)
+  void _startSosRingListener() {
+    _sosRingSubscription = SosService.watchActiveAlerts(widget.sessionId).listen((alerts) {
+      if (!mounted) return;
+
+      // On the first snapshot, just record the count without ringing
+      if (_previousAlertCount == -1) {
+        _previousAlertCount = alerts.length;
+        return;
+      }
+
+      // Detect NEW alerts (count increased)
+      if (alerts.length > _previousAlertCount) {
+        _previousAlertCount = alerts.length;
+
+        // Only ring if this screen is the top visible route
+        if (!_isScreenActive) return;
+
+        // Determine the current user's ID to exclude self-sent alerts
+        final isTourist = TouristSessionManager.isLoggedIn;
+        final currentUserId = isTourist
+            ? (TouristSessionManager.current?.codeDocId ?? '')
+            : (AuthService.currentUser?.uid ?? '');
+
+        // Check the newest alert's sender — skip if it's from us
+        final newest = alerts.first;
+        if (newest.senderId == currentUserId) return;
+
+        // All conditions met — ring the device
+        LocationService.buzzDevice();
+      } else {
+        _previousAlertCount = alerts.length;
+      }
+    });
   }
 
   @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     _pulseController.dispose();
     _fadeController.dispose();
+    _sosRingSubscription?.cancel();
     super.dispose();
   }
 
@@ -142,8 +215,6 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin {
       );
 
       if (mounted) {
-        // Vibrate/ring to confirm SOS was sent
-        LocationService.buzzDevice();
         messenger.showSnackBar(
           SnackBar(
             content: const Row(

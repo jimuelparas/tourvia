@@ -213,7 +213,7 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
       crossAxisCount: 2,
       crossAxisSpacing: 16,
       mainAxisSpacing: 16,
-      childAspectRatio: 1.0,
+      childAspectRatio: 0.95,
       children: [
         _buildModuleCard(
           title: 'Tracking',

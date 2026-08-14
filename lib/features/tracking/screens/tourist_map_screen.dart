@@ -5,6 +5,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../main.dart';
+
 import '../../../core/constants/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/models/tourist_session.dart';
@@ -19,7 +21,7 @@ class TouristMapScreen extends StatefulWidget {
   State<TouristMapScreen> createState() => _TouristMapScreenState();
 }
 
-class _TouristMapScreenState extends State<TouristMapScreen> {
+class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
   final MapController _mapController = MapController();
 
   LatLng _touristPosition = const LatLng(14.5995, 120.9842); // Manila default
@@ -30,6 +32,10 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
   bool _isLoading = true;
   bool _hasPermission = false;
 
+  /// Tracks whether this screen is the top visible route.
+  /// Ring only triggers when true.
+  bool _isScreenActive = true;
+
   StreamSubscription<Position>? _publishSubscription;
   StreamSubscription<Position>? _localLocSubscription;
   StreamSubscription? _ringSubscription;
@@ -39,6 +45,29 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
   void initState() {
     super.initState();
     _initTracking();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  /// Called when a new route is pushed on top of this one.
+  /// The tourist has navigated away — pause the ring listener.
+  @override
+  void didPushNext() {
+    _isScreenActive = false;
+    _ringSubscription?.cancel();
+    _ringSubscription = null;
+  }
+
+  /// Called when the route on top is popped and this screen becomes visible again.
+  /// Resume the ring listener.
+  @override
+  void didPopNext() {
+    _isScreenActive = true;
+    _startRingListener();
   }
 
   Future<void> _initTracking() async {
@@ -119,10 +148,25 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
     });
 
     // 4. Listen for ring command from guide
+    _startRingListener();
+  }
+
+  /// Starts the ring command listener. Extracted so it can be
+  /// re-subscribed when the screen becomes visible again.
+  void _startRingListener() {
+    // Cancel any existing subscription first
+    _ringSubscription?.cancel();
+
+    final session = TouristSessionManager.current;
+    final sessionId = session?.sessionId ?? '';
+    final touristId = session?.codeDocId ?? 'demo-tourist-001';
+
     _ringSubscription = LocationService.listenToRingCommand(
       sessionId: sessionId,
       touristId: touristId,
       onRingTriggered: () {
+        // Only buzz if this screen is actively visible
+        if (!_isScreenActive) return;
         LocationService.buzzDevice();
         _showRingSnackBar();
       },
@@ -188,6 +232,7 @@ class _TouristMapScreenState extends State<TouristMapScreen> {
 
   @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     _publishSubscription?.cancel();
     _localLocSubscription?.cancel();
     _ringSubscription?.cancel();

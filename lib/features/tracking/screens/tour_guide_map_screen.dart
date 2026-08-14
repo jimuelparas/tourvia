@@ -220,11 +220,13 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
     });
     _mapController.move(LatLng(tourist.latitude, tourist.longitude), 17.0);
     // Hide the panel so the quick action card is visible
-    _sheetController.animateTo(
-      0.0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
+    if (_sheetController.isAttached) {
+      _sheetController.animateTo(
+        0.0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   @override
@@ -288,17 +290,21 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
             onPressed: () {
               setState(() => _showPanel = !_showPanel);
               if (_showPanel) {
-                _sheetController.animateTo(
-                  0.45,
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.easeOut,
-                );
+                if (_sheetController.isAttached) {
+                  _sheetController.animateTo(
+                    0.45,
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.easeOut,
+                  );
+                }
               } else {
-                _sheetController.animateTo(
-                  0.0,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeIn,
-                );
+                if (_sheetController.isAttached) {
+                  _sheetController.animateTo(
+                    0.0,
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeIn,
+                  );
+                }
               }
             },
           ),
@@ -393,29 +399,32 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
             ),
 
           // ── Tourist Management Draggable Panel ─────────────────
-          NotificationListener<DraggableScrollableNotification>(
-            onNotification: (notification) {
-              if (notification.extent <= 0.01 && _showPanel) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) setState(() => _showPanel = false);
-                });
-              } else if (notification.extent > 0.01 && !_showPanel) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) setState(() => _showPanel = true);
-                });
-              }
-              return false;
-            },
-            child: DraggableScrollableSheet(
-              controller: _sheetController,
-              initialChildSize: 0.0,
-              minChildSize: 0.0,
-              maxChildSize: 0.85,
-              snap: true,
-              snapSizes: const [0.0, 0.45, 0.85],
-              builder: (context, scrollCtrl) {
-                return _buildManagementPanel(scrollCtrl);
+          IgnorePointer(
+            ignoring: !_showPanel,
+            child: NotificationListener<DraggableScrollableNotification>(
+              onNotification: (notification) {
+                if (notification.extent <= 0.01 && _showPanel) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) setState(() => _showPanel = false);
+                  });
+                } else if (notification.extent > 0.01 && !_showPanel) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) setState(() => _showPanel = true);
+                  });
+                }
+                return false;
               },
+              child: DraggableScrollableSheet(
+                controller: _sheetController,
+                initialChildSize: 0.0,
+                minChildSize: 0.0,
+                maxChildSize: 0.85,
+                snap: true,
+                snapSizes: const [0.0, 0.45, 0.85],
+                builder: (context, scrollCtrl) {
+                  return _buildManagementPanel(scrollCtrl);
+                },
+              ),
             ),
           ),
         ],

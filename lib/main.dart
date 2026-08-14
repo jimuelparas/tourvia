@@ -21,6 +21,10 @@ import 'firebase_options.dart';
 /// on notification tap without a BuildContext.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+/// Global route observer — screens use this to detect visibility
+/// (e.g. pause ring listeners when another screen is pushed on top).
+final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -92,6 +96,7 @@ class _TourviaAppState extends State<TourviaApp> {
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.system,
       navigatorKey: navigatorKey,
+      navigatorObservers: [routeObserver],
       onGenerateRoute: (settings) {
         // Deep link interception for Firebase Auth password reset
         if (settings.name != null && settings.name!.startsWith('/__/auth/action')) {
