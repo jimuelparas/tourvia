@@ -110,6 +110,40 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     );
   }
 
+  Future<void> _markDone(ItineraryItem stop) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Mark as Done?'),
+        content: Text('Mark "${stop.destinationName}" as completed?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.success,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ItineraryService.markStopDone(widget.sessionId, stop.id);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to mark stop as done.')),
+      );
+    }
+  }
+
   Future<void> _confirmEndTour() async {
     setState(() => _fabExpanded = false);
     final confirmed = await showDialog<bool>(
@@ -478,6 +512,14 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                                 icon: const Icon(Icons.edit_rounded, size: 18),
                                 onPressed: () => _navigateToAddEdit(item: stop),
                               ),
+
+                              // "Done" button — only shown when stop is not yet completed
+                              if (stop.status != ItineraryStatus.completed)
+                                TextButton.icon(
+                                  onPressed: isDeleting ? null : () => _markDone(stop),
+                                  icon: const Icon(Icons.check_circle_outline_rounded, size: 18, color: AppColors.success),
+                                  label: const Text('Done', style: TextStyle(fontSize: 12, color: AppColors.success)),
+                                ),
                             ],
                           ),
                         ],

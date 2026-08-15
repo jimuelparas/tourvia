@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -198,6 +200,78 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     });
   }
 
+  // ── Image viewer & download ───────────────────────────────────────────────
+
+  void _openImageViewer(String imageUrl) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(0),
+        child: Stack(
+          children: [
+            // Dismiss on background tap
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.pop(ctx),
+                child: const ColoredBox(color: Colors.transparent),
+              ),
+            ),
+            // Full-screen pinch-to-zoom image
+            Center(
+              child: InteractiveViewer(
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const SizedBox(
+                      height: 200,
+                      child: Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      ),
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image_rounded,
+                    color: Colors.white54,
+                    size: 64,
+                  ),
+                ),
+              ),
+            ),
+            // Close button (top-right)
+            Positioned(
+              top: 40,
+              right: 16,
+              child: SafeArea(
+                child: CircleAvatar(
+                  backgroundColor: Colors.black45,
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ),
+              ),
+            ),
+            // Download button (bottom-centre)
+            Positioned(
+              bottom: 40,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Center(
+                  child: _DownloadButton(imageUrl: imageUrl),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
@@ -376,41 +450,44 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
 
                   // Media image
                   if (message.isMedia && message.mediaUrl != null) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final imgWidth = MediaQuery.of(context).size.width * 0.58;
-                          return Image.network(
-                            message.mediaUrl!,
-                            height: 180,
-                            width: imgWidth,
-                            fit: BoxFit.cover,
-                            loadingBuilder: (ctx, child, progress) {
-                              if (progress == null) return child;
-                              return Container(
-                                height: 180,
-                                width: imgWidth,
-                                alignment: Alignment.center,
-                                color: AppColors.surfaceVariant,
-                                child: CircularProgressIndicator(
-                                  value: progress.expectedTotalBytes != null
-                                      ? progress.cumulativeBytesLoaded /
-                                          progress.expectedTotalBytes!
-                                      : null,
-                                ),
-                              );
-                            },
-                            errorBuilder: (_, __, ___) => Container(
+                    GestureDetector(
+                      onTap: () => _openImageViewer(message.mediaUrl!),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final imgWidth = MediaQuery.of(context).size.width * 0.58;
+                            return Image.network(
+                              message.mediaUrl!,
                               height: 180,
                               width: imgWidth,
-                              color: AppColors.surfaceVariant,
-                              alignment: Alignment.center,
-                              child: const Icon(Icons.broken_image_rounded,
-                                  color: AppColors.textHint),
-                            ),
-                          );
-                        },
+                              fit: BoxFit.cover,
+                              loadingBuilder: (ctx, child, progress) {
+                                if (progress == null) return child;
+                                return Container(
+                                  height: 180,
+                                  width: imgWidth,
+                                  alignment: Alignment.center,
+                                  color: AppColors.surfaceVariant,
+                                  child: CircularProgressIndicator(
+                                    value: progress.expectedTotalBytes != null
+                                        ? progress.cumulativeBytesLoaded /
+                                            progress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                );
+                              },
+                              errorBuilder: (_, __, ___) => Container(
+                                height: 180,
+                                width: imgWidth,
+                                color: AppColors.surfaceVariant,
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.broken_image_rounded,
+                                    color: AppColors.textHint),
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -514,6 +591,122 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             const SizedBox(width: 4),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ── Download Button Widget ────────────────────────────────────────────────────
+// Stateful so it can show its own loading indicator while downloading.
+
+class _DownloadButton extends StatefulWidget {
+  final String imageUrl;
+  const _DownloadButton({required this.imageUrl});
+
+  @override
+  State<_DownloadButton> createState() => _DownloadButtonState();
+}
+
+class _DownloadButtonState extends State<_DownloadButton> {
+  bool _downloading = false;
+
+  Future<void> _download() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+
+    try {
+      // 1. Fetch image bytes via HTTP
+      final response = await http.get(Uri.parse(widget.imageUrl));
+      if (response.statusCode != 200) {
+        throw Exception('Server returned ${response.statusCode}');
+      }
+      final bytes = response.bodyBytes;
+      if (bytes.isEmpty) throw Exception('Downloaded file is empty');
+
+      // 2. Determine save directory
+      //    On Android we write to the public Pictures folder so the image
+      //    is immediately visible in the device gallery / Files app.
+      //    On other platforms we fall back to the app documents directory.
+      final String dirPath;
+      if (Platform.isAndroid) {
+        dirPath = '/storage/emulated/0/Pictures/Tourvia';
+      } else {
+        // iOS / Desktop: we just surface a message that download is
+        // Android-only for now, rather than crash.
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Image download is supported on Android.')),
+          );
+        }
+        return;
+      }
+
+      // 3. Create directory if needed
+      final dir = Directory(dirPath);
+      if (!dir.existsSync()) dir.createSync(recursive: true);
+
+      // 4. Write file
+      final fileName = 'tourvia_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final file = File('$dirPath/$fileName');
+      await file.writeAsBytes(bytes, flush: true);
+
+      // Verify the file was actually written
+      if (!file.existsSync() || file.lengthSync() == 0) {
+        throw Exception('File was not written correctly');
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Colors.white),
+                SizedBox(width: 10),
+                Text('Image saved to Pictures/Tourvia'),
+              ],
+            ),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Download failed: $e'),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton.icon(
+      onPressed: _downloading ? null : _download,
+      icon: _downloading
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.download_rounded),
+      label: Text(_downloading ? 'Saving…' : 'Download'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
     );
   }

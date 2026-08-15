@@ -36,6 +36,10 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
   /// Ring only triggers when true.
   bool _isScreenActive = true;
 
+  /// Records when this tracking session was opened.
+  /// Used to ignore stale Firestore-cached ring commands from previous sessions.
+  late final DateTime _screenOpenedAt;
+
   StreamSubscription<Position>? _publishSubscription;
   StreamSubscription<Position>? _localLocSubscription;
   StreamSubscription? _ringSubscription;
@@ -44,6 +48,7 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
   @override
   void initState() {
     super.initState();
+    _screenOpenedAt = DateTime.now();
     _initTracking();
   }
 
@@ -164,6 +169,7 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
     _ringSubscription = LocationService.listenToRingCommand(
       sessionId: sessionId,
       touristId: touristId,
+      screenOpenedAt: _screenOpenedAt,
       onRingTriggered: () {
         // Only buzz if this screen is actively visible
         if (!_isScreenActive) return;

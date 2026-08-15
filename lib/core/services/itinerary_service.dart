@@ -86,6 +86,16 @@ class ItineraryService {
     recalculateRoutes(sessionId);
   }
 
+  /// Marks a stop as [ItineraryStatus.completed] in Firestore.
+  /// Called when the Tour Guide taps the "Done" button for a destination.
+  static Future<void> markStopDone(String sessionId, String stopId) async {
+    await _col(sessionId).doc(stopId).update({
+      'status': ItineraryStatus.completed.name,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+
   /// Re-orders stops by writing a new [order] field to each doc.
   /// [orderedIds] is the list of stop IDs in the new desired order.
   static Future<void> reorderStops(

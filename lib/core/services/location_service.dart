@@ -129,20 +129,29 @@ class LocationService {
   }
 
   /// Set the ring command status for a specific tourist to true.
+  /// Also writes a server-side [ringCommandAt] timestamp so the tourist
+  /// can ignore stale rings that pre-date their current tracking session.
   static Future<void> triggerRing(String sessionId, String touristId) async {
     await _locCol(sessionId).doc(touristId).update({
       'ringCommand': true,
+      'ringCommandAt': FieldValue.serverTimestamp(),
     });
   }
 
   /// Listens to a tourist's specific location doc for remote alerts (Ring command).
   ///
-  /// When [ringCommand] is true, triggers a device vibration pattern
-  /// and automatically resets the flag to false in Firestore.
+  /// When [ringCommand] is true AND [ringCommandAt] is after [screenOpenedAt],
+  /// triggers a device vibration pattern and automatically resets the flag to
+  /// false in Firestore.
+  ///
+  /// The [screenOpenedAt] guard prevents stale Firestore snapshots (cached by
+  /// the SDK) from triggering a ring every time the tourist re-enters the
+  /// Live Location Tracking screen.
   static StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? listenToRingCommand({
     required String sessionId,
     required String touristId,
     required VoidCallback onRingTriggered,
+    required DateTime screenOpenedAt,
   }) {
     return _locCol(sessionId).doc(touristId).snapshots().listen((snapshot) async {
       if (!snapshot.exists) return;
@@ -150,15 +159,20 @@ class LocationService {
       if (data == null) return;
 
       final shouldRing = data['ringCommand'] as bool? ?? false;
-      if (shouldRing) {
-        // Trigger local callback (vibration/sound)
-        onRingTriggered();
+      if (!shouldRing) return;
 
-        // Reset command immediately in Firestore
-        await _locCol(sessionId).doc(touristId).update({
-          'ringCommand': false,
-        });
-      }
+      // Guard: only react to rings issued AFTER this screen session started.
+      // This prevents stale cached Firestore snapshots from firing spuriously.
+      final ringTs = (data['ringCommandAt'] as Timestamp?)?.toDate();
+      if (ringTs != null && ringTs.isBefore(screenOpenedAt)) return;
+
+      // Trigger local callback (vibration/sound)
+      onRingTriggered();
+
+      // Reset command immediately in Firestore
+      await _locCol(sessionId).doc(touristId).update({
+        'ringCommand': false,
+      });
     });
   }
 
