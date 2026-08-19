@@ -94,7 +94,7 @@ class _TourviaAppState extends State<TourviaApp> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.light,
       navigatorKey: navigatorKey,
       navigatorObservers: [routeObserver],
       onGenerateRoute: (settings) {
