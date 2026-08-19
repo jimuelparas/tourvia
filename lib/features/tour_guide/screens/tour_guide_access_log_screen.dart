@@ -18,10 +18,7 @@ class TourGuideAccessLogScreen extends StatefulWidget {
   /// TODO: Replace with the active session ID from session management (Step 4+).
   final String sessionId;
 
-  const TourGuideAccessLogScreen({
-    super.key,
-    required this.sessionId,
-  });
+  const TourGuideAccessLogScreen({super.key, required this.sessionId});
 
   @override
   State<TourGuideAccessLogScreen> createState() =>
@@ -42,7 +39,8 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
           builder: (context, setDialogState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
+                borderRadius: BorderRadius.circular(20),
+              ),
               title: const Text('Generate Access Codes'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -58,12 +56,15 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                   // Stepper control
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.primarySurface,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.2)),
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -121,7 +122,9 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                           onTap: () => setDialogState(() => count = n),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: isSelected
                                   ? AppColors.primary
@@ -166,7 +169,8 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ],
@@ -188,10 +192,13 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              '$count ${count == 1 ? 'code' : 'codes'} generated successfully'),
+            '$count ${count == 1 ? 'code' : 'codes'} generated successfully',
+          ),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           margin: const EdgeInsets.all(16),
         ),
       );
@@ -220,8 +227,11 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle_rounded,
-                  color: Colors.white, size: 20),
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text('Access code $codeValue deleted successfully'),
@@ -230,8 +240,9 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
           ),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           margin: const EdgeInsets.all(16),
         ),
       );
@@ -242,8 +253,9 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
           content: const Text('Failed to delete code. Please try again.'),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           margin: const EdgeInsets.all(16),
         ),
       );
@@ -263,7 +275,10 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
 
   /// Guide can ONLY clear (reset) a name — they cannot set it.
   void _confirmClearName(
-      String codeDocId, String codeValue, String touristName) {
+    String codeDocId,
+    String codeValue,
+    String touristName,
+  ) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -309,7 +324,8 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
               backgroundColor: AppColors.error,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             child: const Text('Clear Name'),
           ),
@@ -319,8 +335,11 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
   }
 
   Future<void> _confirmDelete(
-      String codeDocId, String codeValue, bool isJoined,
-      String? touristName) async {
+    String codeDocId,
+    String codeValue,
+    bool isJoined,
+    String? touristName,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -333,8 +352,11 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                 color: AppColors.error.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.delete_forever_rounded,
-                  color: AppColors.error, size: 24),
+              child: const Icon(
+                Icons.delete_forever_rounded,
+                color: AppColors.error,
+                size: 24,
+              ),
             ),
             const SizedBox(width: 12),
             const Text('Delete Access Code?'),
@@ -380,13 +402,17 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
               decoration: BoxDecoration(
                 color: AppColors.error.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(12),
-                border:
-                    Border.all(color: AppColors.error.withValues(alpha: 0.15)),
+                border: Border.all(
+                  color: AppColors.error.withValues(alpha: 0.15),
+                ),
               ),
               child: Row(
                 children: const [
-                  Icon(Icons.warning_amber_rounded,
-                      color: AppColors.error, size: 18),
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: AppColors.error,
+                    size: 18,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -417,7 +443,8 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
               backgroundColor: AppColors.error,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ],
@@ -456,16 +483,19 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
           }
 
           final docs = snapshot.data?.docs ?? [];
-          final assigned =
-              docs.where((d) => (d['touristName'] as String?) != null).length;
+          final assigned = docs
+              .where((d) => (d['touristName'] as String?) != null)
+              .length;
           final unassigned = docs.length - assigned;
 
           return Column(
             children: [
               // ── Stats bar ────────────────────────────────
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
                 color: AppColors.surface,
                 child: Row(
                   children: [
@@ -494,13 +524,18 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
               ),
               // ── Info banner ──────────────────────────────
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
                 color: AppColors.primarySurface,
                 child: Row(
                   children: const [
-                    Icon(Icons.info_outline_rounded,
-                        size: 16, color: AppColors.primary),
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: AppColors.primary,
+                    ),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -529,20 +564,16 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                 child: docs.isEmpty
                     ? _buildEmptyState()
                     : ListView.separated(
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
                         itemCount: docs.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: 12),
-                        itemBuilder: (_, index) =>
-                            _buildCodeCard(docs[index]),
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (_, index) => _buildCodeCard(docs[index]),
                       ),
               ),
             ],
           );
         },
       ),
-
-      // ── FAB: Generate new code ───────────────────────────
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isGenerating ? null : _showGenerateDialog,
         backgroundColor: AppColors.primary,
@@ -552,11 +583,15 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2),
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
               )
             : const Icon(Icons.add_rounded),
-        label: const Text('Generate Code',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        label: const Text(
+          'Generate Code',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
@@ -622,11 +657,14 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
           children: [
             Icon(Icons.delete_rounded, color: AppColors.error, size: 28),
             SizedBox(height: 4),
-            Text('Delete',
-                style: TextStyle(
-                    color: AppColors.error,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
+            Text(
+              'Delete',
+              style: TextStyle(
+                color: AppColors.error,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
       ),
@@ -663,9 +701,7 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                     height: 10,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: isJoined
-                          ? AppColors.success
-                          : AppColors.accent,
+                      color: isJoined ? AppColors.success : AppColors.accent,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -682,15 +718,25 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                   ),
                   IconButton(
                     onPressed: () => _copyCode(codeValue),
-                    icon: const Icon(Icons.copy_rounded,
-                        size: 20, color: AppColors.textHint),
+                    icon: const Icon(
+                      Icons.copy_rounded,
+                      size: 20,
+                      color: AppColors.textHint,
+                    ),
                     tooltip: 'Copy Code',
                   ),
                   IconButton(
                     onPressed: () => _confirmDelete(
-                        codeDocId, codeValue, isJoined, touristName),
-                    icon: const Icon(Icons.delete_outline_rounded,
-                        size: 20, color: AppColors.error),
+                      codeDocId,
+                      codeValue,
+                      isJoined,
+                      touristName,
+                    ),
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      size: 20,
+                      color: AppColors.error,
+                    ),
                     tooltip: 'Delete Code',
                   ),
                 ],
@@ -699,8 +745,7 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
             const Divider(height: 1, color: AppColors.border),
             // ── Tourist name row ──────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               child: Row(
                 children: [
                   CircleAvatar(
@@ -717,8 +762,11 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                               fontSize: 15,
                             ),
                           )
-                        : const Icon(Icons.person_rounded,
-                            size: 18, color: AppColors.textHint),
+                        : const Icon(
+                            Icons.person_rounded,
+                            size: 18,
+                            color: AppColors.textHint,
+                          ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -752,18 +800,24 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
                           _confirmClearName(codeDocId, codeValue, touristName!),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.error.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                              color: AppColors.error.withValues(alpha: 0.2)),
+                            color: AppColors.error.withValues(alpha: 0.2),
+                          ),
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.person_remove_rounded,
-                                size: 14, color: AppColors.error),
+                            Icon(
+                              Icons.person_remove_rounded,
+                              size: 14,
+                              color: AppColors.error,
+                            ),
                             SizedBox(width: 4),
                             Text(
                               'Clear',
@@ -791,8 +845,11 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.confirmation_number_outlined,
-              size: 64, color: AppColors.textHint),
+          const Icon(
+            Icons.confirmation_number_outlined,
+            size: 64,
+            color: AppColors.textHint,
+          ),
           const SizedBox(height: 16),
           const Text(
             'No access codes yet.',
@@ -816,10 +873,10 @@ class _TourGuideAccessLogScreenState extends State<TourGuideAccessLogScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
           ),
         ],

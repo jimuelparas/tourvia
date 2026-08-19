@@ -7,6 +7,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/tour_session_service.dart';
 import '../../../core/services/attendance_service.dart';
 import '../../../core/services/sos_service.dart';
+import '../../../core/services/location_service.dart';
 import 'tour_guide_attendance_screen.dart';
 import 'tour_guide_itinerary_screen.dart';
 import '../../chat/screens/group_chat_screen.dart';
@@ -70,9 +71,11 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
       if (!mounted) return;
       final prevCount = _activeAlerts.length;
       setState(() => _activeAlerts = alerts);
-      // Show snackbar when a new SOS arrives
+      // Play alarm + show snackbar when a new SOS arrives
       if (alerts.length > prevCount && prevCount >= 0) {
         final newest = alerts.first;
+        // Ring the device (alarm sound + vibration)
+        LocationService.buzzDevice();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(

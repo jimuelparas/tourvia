@@ -192,6 +192,9 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin, Ro
     setState(() => _isSending = true);
     final messenger = ScaffoldMessenger.of(context);
 
+    // Play alarm sound immediately (must be within user gesture for web)
+    LocationService.buzzDevice();
+
     // Get real GPS coords
     final pos = await _getPosition();
     final lat = pos?.latitude ?? 0.0;

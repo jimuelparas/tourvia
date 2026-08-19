@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:vibration/vibration.dart';
@@ -183,28 +184,40 @@ class LocationService {
     // 1. Play alarm sound
     try {
       final player = AudioPlayer();
-      await player.setVolume(1.0);
-      await player.play(AssetSource('audio/alarm.wav'));
-      // Dispose after the sound finishes (~1.6 s)
-      Future.delayed(const Duration(seconds: 3), () => player.dispose());
-    } catch (_) {
+      // Don't await — must stay in the synchronous user-gesture call stack
+      // for Chrome's autoplay policy to allow audio.
+      player.setVolume(1.0);
+
+      if (kIsWeb) {
+        // On Flutter web, assets are served at assets/assets/...
+        player.play(UrlSource('assets/assets/audio/alarm.wav'));
+      } else {
+        player.play(AssetSource('audio/alarm.wav'));
+      }
+
+      // Dispose after the sound finishes (~3 s)
+      Future.delayed(const Duration(seconds: 4), () => player.dispose());
+    } catch (e) {
       // Audio not available — fall back to haptic
-      await HapticFeedback.heavyImpact();
+      debugPrint('buzzDevice audio error: $e');
+      try {
+        await HapticFeedback.heavyImpact();
+      } catch (_) {}
     }
 
-    // 2. Vibrate concurrently
-    try {
-      final hasVibrator = (await Vibration.hasVibrator()) == true;
-      if (hasVibrator) {
-        // Pattern: wait 0ms, vibrate 500ms, pause 150ms, vibrate 500ms,
-        //          pause 150ms, vibrate 500ms, pause 150ms, vibrate 700ms
-        await Vibration.vibrate(
-          pattern: <int>[0, 500, 150, 500, 150, 500, 150, 700],
-          intensities: <int>[0, 255, 0, 255, 0, 255, 0, 255],
-        );
+    // 2. Vibrate concurrently (not supported on web, but harmless)
+    if (!kIsWeb) {
+      try {
+        final hasVibrator = (await Vibration.hasVibrator()) == true;
+        if (hasVibrator) {
+          await Vibration.vibrate(
+            pattern: <int>[0, 500, 150, 500, 150, 500, 150, 700],
+            intensities: <int>[0, 255, 0, 255, 0, 255, 0, 255],
+          );
+        }
+      } catch (_) {
+        // Vibration not supported — silently ignore
       }
-    } catch (_) {
-      // Vibration not supported — silently ignore
     }
   }
 }

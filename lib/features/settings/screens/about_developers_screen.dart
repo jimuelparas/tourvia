@@ -4,8 +4,63 @@ import '../../../core/theme/app_colors.dart';
 
 /// About the Developers screen (US-23).
 /// Displays developer cards with roles and contributions.
-class AboutDevelopersScreen extends StatelessWidget {
+/// Cards are expandable — tap to show/hide description.
+class AboutDevelopersScreen extends StatefulWidget {
   const AboutDevelopersScreen({super.key});
+
+  @override
+  State<AboutDevelopersScreen> createState() => _AboutDevelopersScreenState();
+}
+
+class _AboutDevelopersScreenState extends State<AboutDevelopersScreen> {
+  /// Tracks which developer card is currently expanded (-1 = none).
+  int _expandedIndex = -1;
+
+  static const _developers = [
+    _DeveloperInfo(
+      name: 'Collarga, Raniel Rayen C.',
+      role: 'Project Manager',
+      description:
+          'Led the development sprint planning, task assignments, and coordinated across the team to deliver features on schedule.',
+      imagePath: 'assets/audio/image/Collarga Raniel Rayen C..png',
+    ),
+    _DeveloperInfo(
+      name: 'Paras, Jimuel S.',
+      role: 'Programmer',
+      description:
+          'Handled Flutter UI implementation, state management, API integration, and developed dynamic client-side logic.',
+      imagePath: 'assets/audio/image/Paras, Jimuel S..png',
+    ),
+    _DeveloperInfo(
+      name: 'Capunpun, Samantha M.',
+      role: 'UX & UI Designer',
+      description:
+          'Designed the user flows, typography, color palette, and high-fidelity mockups to ensure a seamless and intuitive user experience.',
+      imagePath: 'assets/audio/image/Capunpun, Samantha M..png',
+    ),
+    _DeveloperInfo(
+      name: 'Lavarias, Dexter',
+      role: 'System Analyst',
+      description:
+          'Conducted database schema design, analyzed application requirements, and mapped logical flows for the system.',
+      imagePath: 'assets/audio/image/Lavarias, Dexter.png',
+    ),
+    _DeveloperInfo(
+      name: 'Lozano, John Roel A.',
+      role: 'QA & Tester',
+      description:
+          'Executed user acceptance tests, identified performance bottlenecks, and verified core features to ensure high reliability.',
+      imagePath: 'assets/audio/image/Lozano, John Roel A..png',
+    ),
+  ];
+
+  static const _cardColors = [
+    AppColors.primary,
+    AppColors.primary,
+    AppColors.accentTeal,
+    AppColors.accent,
+    AppColors.accentTeal,
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -53,51 +108,14 @@ class AboutDevelopersScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            _buildDeveloperCard(
-              context,
-              name: 'Collarga, Raniel Rayen C.',
-              role: 'Project Manager',
-              description:
-                  'Led the development sprint planning, task assignments, and coordinated across the team to deliver features on schedule.',
-              color: AppColors.primary,
-              icon: Icons.assignment_rounded,
-            ),
-            _buildDeveloperCard(
-              context,
-              name: 'Paras, Jimuel S.',
-              role: 'Programmer',
-              description:
-                  'Handled Flutter UI implementation, state management, API integration, and developed dynamic client-side logic.',
-              color: AppColors.primary,
-              icon: Icons.code_rounded,
-            ),
-            _buildDeveloperCard(
-              context,
-              name: 'Capunpun, Samantha M.',
-              role: 'UX & UI Designer',
-              description:
-                  'Designed the user flows, typography, color palette, and high-fidelity mockups to ensure a seamless and intuitive user experience.',
-              color: AppColors.accentTeal,
-              icon: Icons.palette_rounded,
-            ),
-            _buildDeveloperCard(
-              context,
-              name: 'Lavarias, Dexter',
-              role: 'System Analyst',
-              description:
-                  'Conducted database schema design, analyzed application requirements, and mapped logical flows for the system.',
-              color: AppColors.accent,
-              icon: Icons.analytics_rounded,
-            ),
-            _buildDeveloperCard(
-              context,
-              name: 'Lozano, John Roel A.',
-              role: 'QA & Tester',
-              description:
-                  'Executed user acceptance tests, identified performance bottlenecks, and verified core features to ensure high reliability.',
-              color: AppColors.accentTeal,
-              icon: Icons.bug_report_rounded,
-            ),
+            for (int i = 0; i < _developers.length; i++)
+              _buildDeveloperCard(
+                context,
+                index: i,
+                dev: _developers[i],
+                color: _cardColors[i],
+                isExpanded: _expandedIndex == i,
+              ),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(20),
@@ -132,71 +150,119 @@ class AboutDevelopersScreen extends StatelessWidget {
 
   Widget _buildDeveloperCard(
     BuildContext context, {
-    required String name,
-    required String role,
-    required String description,
+    required int index,
+    required _DeveloperInfo dev,
     required Color color,
-    required IconData icon,
+    required bool isExpanded,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _expandedIndex = _expandedIndex == index ? -1 : index;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isExpanded ? color.withValues(alpha: 0.4) : AppColors.border,
           ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundColor: color.withValues(alpha: 0.1),
-            child: Icon(icon, color: color, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          boxShadow: [
+            BoxShadow(
+              color: isExpanded
+                  ? color.withValues(alpha: 0.08)
+                  : Colors.black.withValues(alpha: 0.03),
+              blurRadius: isExpanded ? 12 : 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Row(
               children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: AppColors.textPrimary,
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: color.withValues(alpha: 0.1),
+                  backgroundImage: AssetImage(dev.imagePath),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        dev.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        dev.role,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: color,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  role,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: color,
-                    fontWeight: FontWeight.w600,
+                AnimatedRotation(
+                  turns: isExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: AppColors.textSecondary,
+                    size: 22,
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  description,
+              ],
+            ),
+            AnimatedCrossFade(
+              firstChild: const SizedBox.shrink(),
+              secondChild: Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  dev.description,
                   style: const TextStyle(
                     fontSize: 13,
                     color: AppColors.textSecondary,
                     height: 1.4,
                   ),
                 ),
-              ],
+              ),
+              crossFadeState: isExpanded
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              duration: const Duration(milliseconds: 300),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+}
+
+/// Data class for developer info.
+class _DeveloperInfo {
+  final String name;
+  final String role;
+  final String description;
+  final String imagePath;
+
+  const _DeveloperInfo({
+    required this.name,
+    required this.role,
+    required this.description,
+    required this.imagePath,
+  });
 }
