@@ -23,6 +23,12 @@ class AppStrings {
   static const String registerTitle = 'Create Account';
   static const String registerSubtitle =
       'Register as a tour guide to get started';
+  static const String firstName = 'First Name';
+  static const String firstNameHint = 'e.g. Juan';
+  static const String middleName = 'Middle Name';
+  static const String middleNameHint = 'e.g. Santos';
+  static const String lastName = 'Last Name';
+  static const String lastNameHint = 'e.g. Dela Cruz';
   static const String fullName = 'Full Name';
   static const String fullNameHint = 'e.g. Juan Dela Cruz';
   static const String age = 'Age';
@@ -31,8 +37,12 @@ class AppStrings {
   static const String emailHint = 'e.g. juan@tourvia.ph';
   static const String contactNumber = 'Contact Number';
   static const String contactNumberHint = 'e.g. +63 912 345 6789';
-  static const String tourGuideId = 'Tour Guide ID';
+  static const String address = 'Address';
+  static const String addressHint = 'e.g. 123 Session Rd, Baguio City';
+  static const String tourGuideId = 'DOT Tour Guide ID';
   static const String tourGuideIdHint = 'e.g. TG-2026-0001';
+  static const String username = 'Username';
+  static const String usernameHint = 'Create a username';
   static const String password = 'Password';
   static const String passwordHint = 'Min. 8 characters';
   static const String confirmPassword = 'Confirm Password';
@@ -64,8 +74,8 @@ class AppStrings {
   static const String loginTitle = 'Welcome Back';
   static const String loginSubtitle =
       'Sign in to access your tour management dashboard';
-  static const String username = 'Username';
-  static const String usernameHint = 'Enter your username';
+  static const String loginUsername = 'Username or Email';
+  static const String loginUsernameHint = 'Enter your username or email';
   static const String loginButton = 'Sign In';
   static const String forgotPassword = 'Forgot Password?';
   static const String noAccount = "Don't have an account? ";
@@ -129,7 +139,17 @@ class AppStrings {
   static const String termsSubtitle =
       'Please read and accept our terms to continue using Tourvia.';
   static const String termsContent =
-      'Welcome to Tourvia.\n\nBy using this application, you agree to the following terms and conditions. The application provides tour management and assistance solely for locations within the Philippines. The reliability of live location tracking and safety alerts depends on your device\'s GPS accuracy and active internet connection.\n\nTour guides are responsible for the accuracy of their itineraries. Tourists must ensure their devices are sufficiently charged and connected to receive real-time updates and SOS alerts. Tourvia is not liable for issues arising from loss of connectivity or hardware malfunctions.\n\nPlease accept these terms to proceed.';
+      'Welcome to Tourvia. Please read and understand these Terms and Conditions carefully before using the application.\n\n'
+      'By accessing, downloading, or using Tourvia, you agree to be legally bound by the terms of this system and the conditions governing all users. Tourvia is an auxiliary mobile platform designed to facilitate tour management, itinerary coordination, and tourist safety assistance exclusively within the Republic of the Philippines on an as-is and as-available basis.\n\n'
+      'System Scope and Developer Disclaimer\n'
+      'Tourvia provides digital tools including access code onboarding, itinerary planning, attendance logging, real-time GPS tracking, emergency SOS alerts, group messaging, and artificial intelligence travel assistance. The system and its developers assume no legal responsibility or liability for the authenticity, validity, or accuracy of credentials, identification documents, and personal details provided by any user. Users are solely responsible for all information they submit. Furthermore, the developers and the system shall not be held liable for any damages, personal injuries, losses, travel disruptions, or misconduct occurring during tour operations or arising from user actions.\n\n'
+      'Terms and Conditions for Tour Guides\n'
+      'Tour Guides must register with authentic personal details and verified credentials, such as Department of Tourism (DOT) accreditation. Tour Guides are responsible for maintaining the confidentiality of their login credentials and are solely accountable for the accuracy of their scheduled itineraries, group safety boundaries, and attendance logs. Tour Guides are granted authorization to monitor tourist GPS locations and trigger remote ring alerts strictly for participant safety and recovery. Tour Guides must officially conclude each tour session to ensure that temporary tracking and session data are properly purged.\n\n'
+      'Terms and Conditions for Tourists\n'
+      'Tourists join active tour sessions through unique access codes issued by their authorized Tour Guide and agree to provide an authentic, identifiable name for roll call and safety monitoring. As a condition of participation, tourists must grant continuous background location permissions to allow real-time proximity monitoring by their guide. Tourists are responsible for keeping their mobile devices sufficiently charged and connected to receive real-time updates and safety alerts, adhering to designated assembly schedules, and utilizing the emergency SOS and communication tools responsibly without abuse.\n\n'
+      'Data Privacy and Transient Storage (RA 10173)\n'
+      'In compliance with the Philippine Data Privacy Act of 2012, Tourvia collects only essential operational data. Real-time GPS location logs, session access codes, and in-session group chat messages are transient and are automatically deleted from active storage upon the formal conclusion of the tour session by the Tour Guide.\n\n'
+      'By tapping "Accept & Continue", you confirm that you have read, understood, and agreed to these Terms and Conditions for both Tour Guides and Tourists.';
   static const String agreeToTerms =
       'I have read and agree to the Terms and Conditions';
   static const String acceptButton = 'Accept & Continue';

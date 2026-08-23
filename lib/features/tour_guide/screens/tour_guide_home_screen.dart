@@ -65,17 +65,23 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
       );
     }
 
-    // Listen for live SOS alerts from tourists
+    // Listen for ALL live SOS alerts — blink and ring whenever any alert is active
     _sosSubscription = SosService.watchActiveAlerts(_sessionId)
         .listen((alerts) {
       if (!mounted) return;
+
       final prevCount = _activeAlerts.length;
       setState(() => _activeAlerts = alerts);
-      // Play alarm + show snackbar when a new SOS arrives
+
+      if (alerts.isNotEmpty) {
+        LocationService.startEmergencyRing();
+      } else {
+        LocationService.stopEmergencyRing();
+      }
+
+      // Show snackbar when a new SOS arrives from a tourist
       if (alerts.length > prevCount && prevCount >= 0) {
         final newest = alerts.first;
-        // Ring the device (alarm sound + vibration)
-        LocationService.buzzDevice();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -119,6 +125,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
   void dispose() {
     _animationController.dispose();
     _sosSubscription?.cancel();
+    LocationService.stopEmergencyRing();
     super.dispose();
   }
 
@@ -237,6 +244,33 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                   }
                 },
               ),
+            const SizedBox(width: 8),
+            // Resolve button
+            TextButton.icon(
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.error,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: const Icon(Icons.check_rounded, size: 16),
+              label: const Text(
+                'Resolve',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              onPressed: () async {
+                // Mark all active alerts as resolved
+                for (final alert in List<SosAlert>.from(_activeAlerts)) {
+                  await SosService.resolveAlert(
+                    sessionId: _sessionId,
+                    alertId: alert.id,
+                  );
+                }
+              },
+            ),
+            const SizedBox(width: 8),
             const Icon(Icons.chevron_right_rounded,
                 color: Colors.white),
           ],
@@ -246,42 +280,56 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
   }
 
   Widget _buildHeader() {
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: AuthService.watchProfile(),
+      builder: (context, snapshot) {
+        final profile = snapshot.data;
+        final guideName = profile?['fullName'] as String? ??
+            AuthService.currentUser?.displayName ??
+            'Guide';
+        final photoUrl = profile?['profilePhotoUrl'] as String?;
 
-    final guideName = AuthService.currentUser?.displayName ?? 'Guide';
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              'Welcome $guideName!',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AppColors.textHint,
-                  ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Welcome $guideName!',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: AppColors.textHint,
+                      ),
+                ),
+                Text(
+                  'Tour Management',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                ),
+              ],
             ),
-            Text(
-              'Tour Management',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
+            InkWell(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              ),
+              borderRadius: BorderRadius.circular(24),
+              child: CircleAvatar(
+                radius: 24,
+                backgroundColor: AppColors.primarySurface,
+                backgroundImage: photoUrl != null && photoUrl.isNotEmpty
+                    ? NetworkImage(photoUrl)
+                    : null,
+                child: photoUrl == null || photoUrl.isEmpty
+                    ? const Icon(Icons.person_rounded, color: AppColors.primary)
+                    : null,
+              ),
             ),
           ],
-        ),
-        InkWell(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const SettingsScreen()),
-          ),
-          borderRadius: BorderRadius.circular(24),
-          child: const CircleAvatar(
-            radius: 24,
-            backgroundColor: AppColors.primarySurface,
-            child: Icon(Icons.person_rounded, color: AppColors.primary),
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -717,11 +765,11 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
             MaterialPageRoute(builder: (_) => const WeatherScreen()),
           ),
         ),
-        _buildModuleCard(
+        _SosBlinkingModuleCard(
+          isActive: _activeAlerts.isNotEmpty,
           title: 'SOS Log',
           subtitle: 'Emergency logs',
           iconAsset: 'assets/icons/sos.png',
-          color: AppColors.error,
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
@@ -768,7 +816,6 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
     required Color color,
     required VoidCallback onTap,
   }) {
-    // ── Icon container constants (8px grid) ──
     const double containerSize = 56;
     const double iconSize = 32;
 
@@ -781,6 +828,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
           decoration: BoxDecoration(
+            color: AppColors.surface,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.border),
           ),
@@ -788,7 +836,6 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // ── Icon: fixed container, perfectly centered image ──
               SizedBox(
                 width: containerSize,
                 height: containerSize,
@@ -798,34 +845,171 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Center(
-                    child: Image.asset(
-                      iconAsset,
-                      width: iconSize,
-                      height: iconSize,
-                      fit: BoxFit.contain,
-                    ),
+                    child: Image.asset(iconAsset,
+                        width: iconSize,
+                        height: iconSize,
+                        fit: BoxFit.contain),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
-              // ── Title ──
+              Text(title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 4),
+              Text(subtitle,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Self-contained SOS blinking card widget.
+// Manages its OWN Timer and its OWN setState so the blink is guaranteed
+// to fire independently of the parent widget's rebuild cycle.
+// ─────────────────────────────────────────────────────────────────────────────
+class _SosBlinkingModuleCard extends StatefulWidget {
+  final bool isActive;
+  final String title;
+  final String subtitle;
+  final String iconAsset;
+  final VoidCallback onTap;
+
+  const _SosBlinkingModuleCard({
+    required this.isActive,
+    required this.title,
+    required this.subtitle,
+    required this.iconAsset,
+    required this.onTap,
+  });
+
+  @override
+  State<_SosBlinkingModuleCard> createState() => _SosBlinkingModuleCardState();
+}
+
+class _SosBlinkingModuleCardState extends State<_SosBlinkingModuleCard> {
+  Timer? _timer;
+  bool _lit = false; // true = red "on" frame, false = normal "off" frame
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isActive) _startBlink();
+  }
+
+  @override
+  void didUpdateWidget(_SosBlinkingModuleCard old) {
+    super.didUpdateWidget(old);
+    if (widget.isActive == old.isActive) return;
+    if (widget.isActive) {
+      _startBlink();
+    } else {
+      _stopBlink();
+    }
+  }
+
+  void _startBlink() {
+    _timer?.cancel();
+    // Immediately show first lit frame, then toggle every 500 ms
+    setState(() => _lit = true);
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted) return;
+      setState(() => _lit = !_lit);
+    });
+  }
+
+  void _stopBlink() {
+    _timer?.cancel();
+    _timer = null;
+    if (mounted) setState(() => _lit = false);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const double containerSize = 56;
+    const double iconSize = 32;
+
+    return Material(
+      // Material color drives InkWell's ink surface color
+      color: _lit ? AppColors.error.withValues(alpha: 0.15) : AppColors.surface,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: _lit ? AppColors.error : AppColors.border,
+              width: _lit ? 3.0 : 1.0,
+            ),
+            boxShadow: _lit
+                ? [
+                    BoxShadow(
+                      color: AppColors.error.withValues(alpha: 0.5),
+                      blurRadius: 16,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                : [],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Icon container — also turns red when lit
+              SizedBox(
+                width: containerSize,
+                height: containerSize,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: _lit
+                        ? AppColors.error.withValues(alpha: 0.22)
+                        : AppColors.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: Image.asset(widget.iconAsset,
+                        width: iconSize,
+                        height: iconSize,
+                        fit: BoxFit.contain),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               Text(
-                title,
+                widget.title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 15,
-                  color: AppColors.textPrimary,
+                  color: _lit ? AppColors.error : AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 4),
-              // ── Subtitle ──
               Text(
-                subtitle,
+                _lit ? '🚨 EMERGENCY' : widget.subtitle,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
-                  color: AppColors.textSecondary,
+                  fontWeight: _lit ? FontWeight.bold : FontWeight.normal,
+                  color: _lit ? AppColors.error : AppColors.textSecondary,
                 ),
               ),
             ],
@@ -835,4 +1019,3 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
     );
   }
 }
-

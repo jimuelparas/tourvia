@@ -44,9 +44,9 @@ __*3\.1\.2\.6 Google Gemini 1.5 Flash Vision API*__
 
 	Google Gemini 1.5 Flash Vision API is a multimodal artificial intelligence service capable of analyzing visual and textual data. In TourVia, Gemini Vision powers automated Department of Tourism (DOT) Tour Guide ID verification during guide registration. It inspects official DOT logos, headers, card layout compliance, checks accreditation expiry dates, evaluates image clarity/blur, and extracts guide details.
 
-__*3\.1\.2\.7 OpenAI (ChatGPT API - GPT-4o-mini)*__
+__*3\.1\.2\.7 Google Gemini Generative AI API (Gemini Flash)*__
 
-	OpenAI Chat Completions API utilizing the `gpt-4o-mini` model powers the AI Travel Chatbot assistant in TourVia. Guided by a specialized system prompt restricting responses strictly to Philippine tourism, the assistant provides tourists with real-time destination recommendations, travel tips, local food advice, and cultural information in English and Tagalog.
+	Google Gemini API utilizing `gemini-1.5-flash` and `gemini-2.0-flash` models powers the intelligent AI Travel Chatbot assistant in TourVia. Guided by a specialized system prompt strictly restricting responses to Philippine tourism, the assistant provides tourists with real-time destination recommendations, travel tips, local food advice, and cultural information in English, Filipino, and Taglish.
 
 __*3\.1\.2\.8 OpenWeatherMap API*__
 
@@ -71,7 +71,7 @@ __*3\.1\.2\.12 GitHub*__
 __*3\.1\.2\.13 Auxiliary Flutter Libraries & Utilities*__
 
 	The application incorporates additional specialized Flutter packages to support system features:
-	• **flutter_dotenv**: Securely loads environment variables and API keys (OpenAI, Gemini, OpenWeatherMap) from `.env` files.
+	• **flutter_dotenv**: Securely loads environment variables and API keys (Gemini, OpenWeatherMap) from `.env` files.
 	• **image_picker**: Handles device camera capture and photo gallery selection for ID and profile uploads.
 	• **geolocator**: Provides device GPS coordinates, distance calculations, and real-time position updates.
 	• **audioplayers & vibration**: Plays emergency alarm audio tones and triggers device haptic vibration during SOS alerts.

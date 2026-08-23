@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_strings.dart';
 import '../../../core/models/tourist_session.dart';
 import '../../../core/services/access_code_service.dart';
+import '../../../core/services/lockout_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../tourist/screens/tourist_dashboard_screen.dart';
@@ -15,6 +17,7 @@ import 'terms_and_conditions_screen.dart';
 /// Collects an access code from the tourist. Provides:
 /// - Inline validation.
 /// - Status-aware error banners for invalid/expired codes.
+/// - 5-attempt rate-limiting with 15-minute temporary lockout.
 /// - Navigation back to role selection or into the tour session.
 class TouristLoginScreen extends StatefulWidget {
   const TouristLoginScreen({super.key});
@@ -30,6 +33,10 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
 
   bool _isSubmitting = false;
   String? _loginError;
+
+  /// Lockout status state for 5-attempt rate-limiting.
+  LockoutStatus? _lockoutStatus;
+  Timer? _lockoutTimer;
 
   // ── Animations ──────────────────────────────────────────
   late final AnimationController _fadeController;
@@ -61,10 +68,37 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
 
     _fadeController.forward();
     _slideController.forward();
+    _checkInitialLockout();
+  }
+
+  Future<void> _checkInitialLockout() async {
+    final status = await LockoutService.checkLockout(LockoutType.touristCode);
+    if (!mounted) return;
+    setState(() => _lockoutStatus = status);
+    if (status.isLocked) {
+      _startLockoutCountdown();
+    }
+  }
+
+  void _startLockoutCountdown() {
+    _lockoutTimer?.cancel();
+    _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      final status = await LockoutService.checkLockout(LockoutType.touristCode);
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => _lockoutStatus = status);
+      if (!status.isLocked) {
+        timer.cancel();
+        setState(() => _loginError = null);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _lockoutTimer?.cancel();
     _fadeController.dispose();
     _slideController.dispose();
     _accessCodeCtrl.dispose();
@@ -84,6 +118,18 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
   // ── Submit ──────────────────────────────────────────────
 
   Future<void> _onSubmit() async {
+    // Check lockout before validating access code
+    final currentStatus = await LockoutService.checkLockout(LockoutType.touristCode);
+    if (currentStatus.isLocked) {
+      setState(() {
+        _lockoutStatus = currentStatus;
+        _loginError =
+            'Access code input is temporarily locked due to 5 consecutive failed attempts. Please try again in ${currentStatus.formattedRemainingTime}.';
+      });
+      _startLockoutCountdown();
+      return;
+    }
+
     setState(() => _loginError = null);
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSubmitting = true);
@@ -91,6 +137,9 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
     try {
       final codeDoc = await AccessCodeService.validateCode(_accessCodeCtrl.text);
       if (!mounted) return;
+
+      // Reset lockout attempts on valid access code
+      await LockoutService.resetAttempts(LockoutType.touristCode);
 
       final data = codeDoc.data();
       final existingName = data != null ? data['touristName'] as String? : null;
@@ -115,17 +164,29 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
       }
     } on AccessCodeException catch (e) {
       if (!mounted) return;
-      setState(() {
-        _isSubmitting = false;
-        _loginError = e.message;
-      });
+      await _handleLoginFailure(e.message);
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _isSubmitting = false;
-        _loginError = 'Something went wrong. Please try again.';
-      });
+      await _handleLoginFailure('Something went wrong. Please try again.');
     }
+  }
+
+  Future<void> _handleLoginFailure(String baseMessage) async {
+    final status = await LockoutService.recordFailure(LockoutType.touristCode);
+    if (!mounted) return;
+
+    setState(() {
+      _isSubmitting = false;
+      _lockoutStatus = status;
+      if (status.isLocked) {
+        _loginError =
+            'Too many failed attempts (5/5). You have been locked out for 15 minutes. Try again in ${status.formattedRemainingTime}.';
+        _startLockoutCountdown();
+      } else {
+        _loginError =
+            '$baseMessage (${status.remainingAttempts} attempt${status.remainingAttempts == 1 ? '' : 's'} remaining before 15-minute lockout)';
+      }
+    });
   }
 
   void _showSuccessAndNavigate() {
@@ -531,18 +592,21 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
   // ── Submit Button ───────────────────────────────────────
 
   Widget _buildSubmitButton() {
+    final isLocked = _lockoutStatus?.isLocked ?? false;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
-        gradient: _isSubmitting
+        gradient: (_isSubmitting || isLocked)
             ? null
             : const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [Color(0xFFF59E0B), Color(0xFFEA580C)],
               ),
-        boxShadow: _isSubmitting
+        color: isLocked ? AppColors.surfaceVariant : null,
+        boxShadow: (_isSubmitting || isLocked)
             ? []
             : [
                 BoxShadow(
@@ -553,10 +617,10 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
               ],
       ),
       child: ElevatedButton(
-        onPressed: _isSubmitting ? null : _onSubmit,
+        onPressed: (_isSubmitting || isLocked) ? null : _onSubmit,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
-          disabledBackgroundColor: AppColors.surfaceVariant,
+          disabledBackgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
         ),
         child: _isSubmitting
@@ -568,14 +632,30 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
                   color: AppColors.accent,
                 ),
               )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.login_rounded, size: 22),
-                  SizedBox(width: 10),
-                  Text(AppStrings.joinTourButton),
-                ],
-              ),
+            : isLocked
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.lock_clock_rounded,
+                          size: 20, color: AppColors.error),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Locked (${_lockoutStatus?.formattedRemainingTime})',
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.login_rounded, size: 22),
+                      SizedBox(width: 10),
+                      Text(AppStrings.joinTourButton),
+                    ],
+                  ),
       ),
     );
   }

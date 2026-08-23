@@ -177,6 +177,90 @@ class LocationService {
     });
   }
 
+  static AudioPlayer? _emergencyPlayer;
+  static Timer? _emergencyVibrationTimer;
+  static int _ringSequence = 0;
+
+  /// Starts repeating emergency sound and vibration
+  static Future<void> startEmergencyRing() async {
+    // Only start if not already active
+    if (_emergencyPlayer != null) return;
+
+    final seq = ++_ringSequence;
+    final player = AudioPlayer();
+    _emergencyPlayer = player;
+    try {
+      await player.setReleaseMode(ReleaseMode.loop);
+      await player.setVolume(1.0);
+      
+      // If stop was called while we were awaiting, abort
+      if (_ringSequence != seq || _emergencyPlayer != player) {
+        try { await player.dispose(); } catch (_) {}
+        return;
+      }
+
+      if (kIsWeb) {
+        // On Flutter web, assets are served at assets/assets/...
+        await player.play(UrlSource('assets/assets/audio/alarm.wav'));
+      } else {
+        await player.play(AssetSource('audio/alarm.wav'));
+      }
+    } catch (e) {
+      debugPrint('startEmergencyRing audio error: $e');
+    }
+
+    // Repeatedly trigger vibration since pattern vibration may stop or not loop infinitely
+    if (!kIsWeb) {
+      // Trigger immediately
+      _triggerEmergencyVibration();
+      // Repeat vibration every 4 seconds (approx duration of vibration pattern)
+      _emergencyVibrationTimer?.cancel();
+      _emergencyVibrationTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+        _triggerEmergencyVibration();
+      });
+    }
+  }
+
+  static Future<void> _triggerEmergencyVibration() async {
+    try {
+      final hasVibrator = (await Vibration.hasVibrator()) == true;
+      if (hasVibrator) {
+        await Vibration.vibrate(
+          pattern: <int>[0, 500, 150, 500, 150, 500, 150, 700],
+          intensities: <int>[0, 255, 0, 255, 0, 255, 0, 255],
+        );
+      }
+    } catch (_) {}
+  }
+
+  /// Stops the active emergency sound and vibration
+  static Future<void> stopEmergencyRing() async {
+    _ringSequence++; // invalidate any pending start requests
+    if (_emergencyPlayer != null) {
+      final player = _emergencyPlayer!;
+      _emergencyPlayer = null; // detach immediately
+      try {
+        await player.stop();
+      } catch (e) {
+        debugPrint('stopEmergencyRing stop error: $e');
+      }
+      try {
+        await player.dispose();
+      } catch (e) {
+        debugPrint('stopEmergencyRing dispose error: $e');
+      }
+    }
+    if (_emergencyVibrationTimer != null) {
+      _emergencyVibrationTimer!.cancel();
+      _emergencyVibrationTimer = null;
+    }
+    if (!kIsWeb) {
+      try {
+        await Vibration.cancel();
+      } catch (_) {}
+    }
+  }
+
   /// Triggers a loud alarm on the device:
   /// - Plays the bundled alarm.wav sound (4 beeps).
   /// - Vibrates in a repeating pattern simultaneously.

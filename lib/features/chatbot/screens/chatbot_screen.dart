@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_markdown/flutter_markdown.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/chatbot_service.dart';
 import '../../chat/models/chat_message.dart';
@@ -264,62 +266,98 @@ class _ChatbotScreenState extends State<ChatbotScreen>
   }
 
   Widget _buildMessageBubble(ChatMessage message, bool isMe) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!isMe) ...[
-            const CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.accentTeal,
-              child: Icon(Icons.smart_toy_rounded,
-                  color: Colors.white, size: 18),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: isMe
-                    ? AppColors.primary
-                    : AppColors.surface,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isMe ? 16 : 0),
-                  bottomRight: Radius.circular(isMe ? 0 : 16),
+    if (isMe) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20, left: 48),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Flexible(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F4F9),
+                  borderRadius: BorderRadius.circular(24),
                 ),
-                border: Border.all(
-                  color:
-                      isMe ? Colors.transparent : AppColors.border,
+                child: Text(
+                  message.text,
+                  style: const TextStyle(
+                    color: Color(0xFF1F1F1F),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-                boxShadow: isMe
-                    ? null
-                    : [
-                        BoxShadow(
-                          color:
-                              Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
               ),
-              child: Text(
-                message.text,
-                style: TextStyle(
-                  color: isMe
-                      ? Colors.white
-                      : AppColors.textPrimary,
+            ),
+          ],
+        ),
+      );
+    }
+
+    // AI Message bubble (Gemini Style)
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 28, right: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.all(6),
+            decoration: const BoxDecoration(
+              color: Color(0xFFE8F0FE),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.auto_awesome,
+              color: AppColors.primary,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: MarkdownBody(
+              data: message.text,
+              selectable: true,
+              styleSheet: MarkdownStyleSheet(
+                p: const TextStyle(
+                  fontSize: 15,
+                  height: 1.65,
+                  color: Color(0xFF2D2D2D),
+                  letterSpacing: 0.1,
+                ),
+                h1: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F1F1F),
                   height: 1.5,
                 ),
+                h2: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F1F1F),
+                  height: 1.5,
+                ),
+                h3: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F1F1F),
+                  height: 1.4,
+                ),
+                strong: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1A1A1A),
+                ),
+                listBullet: const TextStyle(
+                  color: Color(0xFF1A1A1A),
+                  fontSize: 15,
+                  height: 1.6,
+                ),
+                listIndent: 22,
+                blockSpacing: 14,
               ),
             ),
           ),
-          if (isMe) const SizedBox(width: 24),
         ],
       ),
     );

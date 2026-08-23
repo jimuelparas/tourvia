@@ -21,15 +21,24 @@ class AuthService {
   /// Account is saved with [status] — defaults to 'pending' (admin approval needed).
   /// If AI verification passes, status can be set to 'approved' for auto-activation.
   static Future<void> registerTourGuide({
-    required String fullName,
+    required String firstName,
+    required String lastName,
+    String middleName = '',
     required int age,
     required String email,
     required String contactNumber,
-    required String tourGuideId,
+    String address = '',
+    String tourGuideId = '',
+    required String username,
     required String password,
     String status = 'pending',
     String? idPhotoUrl,
   }) async {
+    // Build a display-friendly full name
+    final fullName = middleName.trim().isNotEmpty
+        ? '${firstName.trim()} ${middleName.trim()} ${lastName.trim()}'
+        : '${firstName.trim()} ${lastName.trim()}';
+
     // 1. Create Firebase Auth user
     final credential = await _auth.createUserWithEmailAndPassword(
       email: email.trim(),
@@ -39,16 +48,21 @@ class AuthService {
     final uid = credential.user!.uid;
 
     // 2. Update display name
-    await credential.user!.updateDisplayName(fullName.trim());
+    await credential.user!.updateDisplayName(fullName);
 
     // 3. Save profile to Firestore with provided status
     final profileData = <String, dynamic>{
       'uid': uid,
-      'fullName': fullName.trim(),
+      'firstName': firstName.trim(),
+      'middleName': middleName.trim(),
+      'lastName': lastName.trim(),
+      'fullName': fullName,
       'age': age,
       'email': email.trim(),
       'contactNumber': contactNumber.trim(),
+      'address': address.trim(),
       'tourGuideId': tourGuideId.trim(),
+      'username': username.trim(),
       'status': status, // pending | approved | rejected
       'role': 'tour_guide',
       'createdAt': FieldValue.serverTimestamp(),
@@ -68,41 +82,78 @@ class AuthService {
 
   // ── Login (US-02) ────────────────────────────────────────
 
-  /// Logs in a tour guide and checks account status.
-  /// Throws [AuthException] with a specific code if account is pending/rejected.
+  /// Logs in a tour guide by [identifier] (username or email) and password.
+  /// Checks account status and throws [AuthException] for pending/rejected/invalid accounts.
   static Future<void> loginTourGuide({
-    required String email,
+    required String identifier,
     required String password,
   }) async {
-    // 1. Sign in with Firebase Auth
-    final credential = await _auth.signInWithEmailAndPassword(
-      email: email.trim(),
-      password: password,
-    );
+    final trimmedIdentifier = identifier.trim();
+    String emailToUse = trimmedIdentifier;
 
-    final uid = credential.user!.uid;
+    // 1. If identifier is NOT an email (no '@'), resolve it from Firestore by username
+    if (!trimmedIdentifier.contains('@')) {
+      final query = await _db
+          .collection('users')
+          .where('username', isEqualTo: trimmedIdentifier)
+          .limit(1)
+          .get();
 
-    // 2. Fetch Firestore profile to check status
-    final doc = await _db.collection('users').doc(uid).get();
+      if (query.docs.isEmpty) {
+        // Fallback: search case-insensitively across users
+        final allUsers = await _db.collection('users').get();
+        final match = allUsers.docs.where((doc) {
+          final u = doc.data()['username'] as String?;
+          return u != null &&
+              u.toLowerCase() == trimmedIdentifier.toLowerCase();
+        }).firstOrNull;
 
-    if (!doc.exists) {
-      await _auth.signOut();
-      throw AuthException('account-not-found');
+        if (match == null) {
+          throw AuthException('user-not-found');
+        }
+        emailToUse = match.data()['email'] as String? ?? '';
+      } else {
+        emailToUse = query.docs.first.data()['email'] as String? ?? '';
+      }
+
+      if (emailToUse.isEmpty) {
+        throw AuthException('account-not-found');
+      }
     }
 
-    final status = doc.data()?['status'] as String? ?? 'pending';
+    try {
+      // 2. Sign in with Firebase Auth
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: emailToUse.trim(),
+        password: password,
+      );
 
-    if (status == 'pending') {
-      await _auth.signOut();
-      throw AuthException('account-pending');
+      final uid = credential.user!.uid;
+
+      // 3. Fetch Firestore profile to check status
+      final doc = await _db.collection('users').doc(uid).get();
+
+      if (!doc.exists) {
+        await _auth.signOut();
+        throw AuthException('account-not-found');
+      }
+
+      final status = doc.data()?['status'] as String? ?? 'pending';
+
+      if (status == 'pending') {
+        await _auth.signOut();
+        throw AuthException('account-pending');
+      }
+
+      if (status == 'rejected') {
+        await _auth.signOut();
+        throw AuthException('account-rejected');
+      }
+
+      // status == 'approved' → login successful
+    } on FirebaseAuthException catch (e) {
+      throw AuthException(e.code);
     }
-
-    if (status == 'rejected') {
-      await _auth.signOut();
-      throw AuthException('account-rejected');
-    }
-
-    // status == 'approved' → login successful
   }
 
   // ── Forgot Password (US-03) ──────────────────────────────
@@ -122,6 +173,12 @@ class AuthService {
     return doc.data();
   }
 
+  /// Fetches any user's profile by their UID (used by tourists to view guide info).
+  static Future<Map<String, dynamic>?> getGuideProfile(String guideUid) async {
+    final doc = await _db.collection('users').doc(guideUid).get();
+    return doc.data();
+  }
+
   /// Returns a real-time stream of the current user's profile document.
   static Stream<Map<String, dynamic>?> watchProfile() {
     final user = _auth.currentUser;
@@ -133,7 +190,9 @@ class AuthService {
 
   /// Updates the current user's profile fields in both Auth and Firestore.
   static Future<void> updateProfile({
-    required String fullName,
+    required String firstName,
+    required String lastName,
+    String middleName = '',
     required String email,
     required String contactNumber,
     String? address,
@@ -142,8 +201,13 @@ class AuthService {
     final user = _auth.currentUser;
     if (user == null) throw AuthException('account-not-found');
 
+    // Build full name from parts
+    final fullName = middleName.trim().isNotEmpty
+        ? '${firstName.trim()} ${middleName.trim()} ${lastName.trim()}'
+        : '${firstName.trim()} ${lastName.trim()}';
+
     // Update Auth display name
-    await user.updateDisplayName(fullName.trim());
+    await user.updateDisplayName(fullName);
 
     // Update Auth email if changed
     if (user.email != email.trim()) {
@@ -152,7 +216,10 @@ class AuthService {
 
     // Update Firestore profile
     final updateData = <String, dynamic>{
-      'fullName': fullName.trim(),
+      'firstName': firstName.trim(),
+      'middleName': middleName.trim(),
+      'lastName': lastName.trim(),
+      'fullName': fullName,
       'email': email.trim(),
       'contactNumber': contactNumber.trim(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -211,9 +278,11 @@ class AuthException implements Exception {
       case 'account-not-found':
         return 'Account not found. Please register first.';
       case 'invalid-credential':
-        return 'Incorrect username or password. Please try again.';
+        return 'Incorrect username/email or password. Please try again.';
       case 'user-not-found':
-        return 'No account found with this email.';
+        return 'No account found with this username or email.';
+      case 'username-already-in-use':
+        return 'This username is already taken. Please choose another one.';
       case 'wrong-password':
         return 'Incorrect password. Please try again.';
       case 'email-already-in-use':

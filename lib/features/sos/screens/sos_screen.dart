@@ -32,15 +32,8 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin, Ro
 
   bool _isSending = false;
 
-  /// Tracks whether this screen is the top visible route.
-  /// SOS ring only triggers when true.
-  bool _isScreenActive = true;
-
   /// Watches for new SOS alerts to ring the recipient.
   StreamSubscription<List<SosAlert>>? _sosRingSubscription;
-
-  /// Tracks the previous alert count so we can detect NEW alerts.
-  int _previousAlertCount = -1;
 
   @override
   void initState() {
@@ -72,52 +65,26 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin, Ro
     routeObserver.subscribe(this, ModalRoute.of(context)!);
   }
 
-  /// Called when a new route is pushed on top of this one.
-  @override
-  void didPushNext() {
-    _isScreenActive = false;
-  }
-
-  /// Called when the route on top is popped and this screen becomes visible again.
-  @override
-  void didPopNext() {
-    _isScreenActive = true;
-  }
-
-  /// Listens for new SOS alerts and rings the device ONLY if:
-  /// 1. This screen is actively visible (_isScreenActive)
-  /// 2. The alert was NOT sent by the current user (sender exclusion)
+  /// Listens for new SOS alerts and manages ring on this screen.
   void _startSosRingListener() {
     _sosRingSubscription = SosService.watchActiveAlerts(widget.sessionId).listen((alerts) {
       if (!mounted) return;
 
-      // On the first snapshot, just record the count without ringing
-      if (_previousAlertCount == -1) {
-        _previousAlertCount = alerts.length;
-        return;
-      }
+      // Determine the current user's ID to exclude self-sent alerts
+      final isTourist = TouristSessionManager.isLoggedIn;
+      final currentUserId = isTourist
+          ? (TouristSessionManager.current?.codeDocId ?? '')
+          : (AuthService.currentUser?.uid ?? '');
 
-      // Detect NEW alerts (count increased)
-      if (alerts.length > _previousAlertCount) {
-        _previousAlertCount = alerts.length;
+      // Incoming alerts are those NOT sent by the current user
+      final incomingAlerts = alerts.where((a) => a.senderId != currentUserId).toList();
 
-        // Only ring if this screen is the top visible route
-        if (!_isScreenActive) return;
-
-        // Determine the current user's ID to exclude self-sent alerts
-        final isTourist = TouristSessionManager.isLoggedIn;
-        final currentUserId = isTourist
-            ? (TouristSessionManager.current?.codeDocId ?? '')
-            : (AuthService.currentUser?.uid ?? '');
-
-        // Check the newest alert's sender — skip if it's from us
-        final newest = alerts.first;
-        if (newest.senderId == currentUserId) return;
-
-        // All conditions met — ring the device
-        LocationService.buzzDevice();
+      if (incomingAlerts.isNotEmpty) {
+        LocationService.startEmergencyRing();
       } else {
-        _previousAlertCount = alerts.length;
+        // Stop ring as soon as there are no more incoming active alerts
+        // (covers both: guide resolved OR tourist resolved from this screen)
+        LocationService.stopEmergencyRing();
       }
     });
   }
@@ -128,6 +95,10 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin, Ro
     _pulseController.dispose();
     _fadeController.dispose();
     _sosRingSubscription?.cancel();
+    // Note: do NOT call stopEmergencyRing() here.
+    // The ring is managed by the dashboard listeners (TourGuideHomeScreen /
+    // TouristHomeScreen), which keep running while this screen is on the stack.
+    // Stopping here would kill the ring even while alerts are still active.
     super.dispose();
   }
 
@@ -189,6 +160,7 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin, Ro
   }
 
   Future<void> _doSendSos() async {
+    if (_isSending) return;
     setState(() => _isSending = true);
     final messenger = ScaffoldMessenger.of(context);
 

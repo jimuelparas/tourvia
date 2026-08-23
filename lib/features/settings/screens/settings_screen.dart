@@ -8,7 +8,6 @@ import '../../auth/screens/role_selection_screen.dart';
 import 'about_app_screen.dart';
 import 'about_developers_screen.dart';
 import 'profile_screen.dart';
-import 'references_screen.dart';
 
 /// Screen for Application Settings and Information (US-22, US-23, US-24, US-25).
 class SettingsScreen extends StatefulWidget {
@@ -136,16 +135,6 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             const SizedBox(height: 16),
             _buildSectionHeader('Legal & Resources'),
-            _buildListTile(
-              context,
-              icon: Icons.library_books_rounded,
-              title: 'References',
-              subtitle: 'Sources and citations',
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ReferencesScreen()),
-              ),
-            ),
             _buildListTile(
               context,
               icon: Icons.gavel_rounded,

@@ -142,10 +142,7 @@ If the image is NOT a DOT Tour Guide ID at all, set isOfficialDotId to false and
 
     final base64Image = base64Encode(imageBytes);
 
-    final url = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/models/'
-      'gemini-1.5-flash:generateContent?key=$apiKey',
-    );
+    final candidateModels = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
     final body = jsonEncode({
       'contents': [
@@ -167,57 +164,82 @@ If the image is NOT a DOT Tour Guide ID at all, set isOfficialDotId to false and
       },
     });
 
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: body,
+    http.Response? lastResponse;
+    for (final modelName in candidateModels) {
+      final url = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models/'
+        '$modelName:generateContent?key=$apiKey',
       );
 
-      if (response.statusCode != 200) {
-        final errBody = jsonDecode(response.body);
-        final errMsg = errBody['error']?['message'] ?? 'Unknown error';
-        return GeminiIdVerificationResult.failed(
-          'Gemini API error (${response.statusCode}): $errMsg',
+      try {
+        final response = await http.post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: body,
         );
+
+        lastResponse = response;
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final candidates = data['candidates'] as List<dynamic>?;
+          if (candidates == null || candidates.isEmpty) {
+            return GeminiIdVerificationResult.failed(
+              'No response from Gemini. Please try again.',
+            );
+          }
+
+          final text = candidates[0]['content']?['parts']?[0]?['text'] as String?;
+          if (text == null || text.isEmpty) {
+            return GeminiIdVerificationResult.failed(
+              'Gemini returned an empty response.',
+            );
+          }
+
+          final jsonStr = _extractJson(text);
+          if (jsonStr == null) {
+            return GeminiIdVerificationResult.failed(
+              'Could not parse verification results from Gemini.',
+            );
+          }
+
+          final parsed = jsonDecode(jsonStr) as Map<String, dynamic>;
+          return GeminiIdVerificationResult.fromJson(parsed);
+        } else if (response.statusCode == 404 || response.statusCode == 429) {
+          // Try next candidate model
+          continue;
+        } else {
+          final errBody = jsonDecode(response.body);
+          final errMsg = errBody['error']?['message'] ?? 'Unknown error';
+          return GeminiIdVerificationResult.failed(
+            'Gemini API error (${response.statusCode}): $errMsg',
+          );
+        }
+      } catch (_) {
+        continue;
       }
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final candidates = data['candidates'] as List<dynamic>?;
-      if (candidates == null || candidates.isEmpty) {
-        return GeminiIdVerificationResult.failed(
-          'No response from Gemini. Please try again.',
-        );
-      }
-
-      final content = candidates[0]['content'] as Map<String, dynamic>?;
-      final parts = content?['parts'] as List<dynamic>?;
-      if (parts == null || parts.isEmpty) {
-        return GeminiIdVerificationResult.failed(
-          'Empty response from Gemini. Please try again.',
-        );
-      }
-
-      String text = (parts[0]['text'] as String).trim();
-
-      // Strip markdown code fences if Gemini wraps in ```json ... ```
-      if (text.startsWith('```')) {
-        text = text
-            .replaceFirst(RegExp(r'^```json?\s*'), '')
-            .replaceFirst(RegExp(r'```\s*$'), '')
-            .trim();
-      }
-
-      final jsonResult = jsonDecode(text) as Map<String, dynamic>;
-      return GeminiIdVerificationResult.fromJson(jsonResult);
-    } on FormatException {
-      return GeminiIdVerificationResult.failed(
-        'Failed to parse Gemini response. Please try again with a clearer photo.',
-      );
-    } catch (e) {
-      return GeminiIdVerificationResult.failed(
-        'Verification failed: ${e.toString()}',
-      );
     }
+
+    return GeminiIdVerificationResult.failed(
+      lastResponse != null
+          ? 'Gemini API error (${lastResponse.statusCode})'
+          : 'Unable to connect to Gemini Vision service.',
+    );
+  }
+
+  static String? _extractJson(String raw) {
+    String text = raw.trim();
+    if (text.startsWith('```')) {
+      text = text
+          .replaceFirst(RegExp(r'^```json?\s*'), '')
+          .replaceFirst(RegExp(r'```\s*$'), '')
+          .trim();
+    }
+    final start = text.indexOf('{');
+    final end = text.lastIndexOf('}');
+    if (start != -1 && end != -1 && end > start) {
+      return text.substring(start, end + 1);
+    }
+    return text;
   }
 }
+

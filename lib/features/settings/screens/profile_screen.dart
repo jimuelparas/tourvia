@@ -19,7 +19,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
 
-  late TextEditingController _nameCtrl;
+  late TextEditingController _firstNameCtrl;
+  late TextEditingController _middleNameCtrl;
+  late TextEditingController _lastNameCtrl;
   late TextEditingController _emailCtrl;
   late TextEditingController _phoneCtrl;
   late TextEditingController _addressCtrl;
@@ -27,6 +29,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool _isLoading = true;
   bool _isSaving = false;
   String? _tourGuideId;
+  String? _username;
   String? _profilePhotoUrl;
   Uint8List? _newPhotoBytes;
 
@@ -45,7 +48,9 @@ class _ProfileScreenState extends State<ProfileScreen>
   @override
   void initState() {
     super.initState();
-    _nameCtrl = TextEditingController();
+    _firstNameCtrl = TextEditingController();
+    _middleNameCtrl = TextEditingController();
+    _lastNameCtrl = TextEditingController();
     _emailCtrl = TextEditingController();
     _phoneCtrl = TextEditingController();
     _addressCtrl = TextEditingController();
@@ -64,7 +69,9 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
+    _firstNameCtrl.dispose();
+    _middleNameCtrl.dispose();
+    _lastNameCtrl.dispose();
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
@@ -80,11 +87,20 @@ class _ProfileScreenState extends State<ProfileScreen>
       final profile = await AuthService.getProfile();
       if (!mounted) return;
       if (profile != null) {
-        _nameCtrl.text = profile['fullName'] as String? ?? '';
+        // Support both old (fullName) and new (firstName/lastName) formats
+        if (profile['firstName'] != null) {
+          _firstNameCtrl.text = profile['firstName'] as String? ?? '';
+          _middleNameCtrl.text = profile['middleName'] as String? ?? '';
+          _lastNameCtrl.text = profile['lastName'] as String? ?? '';
+        } else {
+          // Legacy fallback: put the full name into firstName
+          _firstNameCtrl.text = profile['fullName'] as String? ?? '';
+        }
         _emailCtrl.text = profile['email'] as String? ?? '';
         _phoneCtrl.text = profile['contactNumber'] as String? ?? '';
         _addressCtrl.text = profile['address'] as String? ?? '';
         _tourGuideId = profile['tourGuideId'] as String?;
+        _username = profile['username'] as String?;
         _profilePhotoUrl = profile['profilePhotoUrl'] as String?;
       }
       setState(() => _isLoading = false);
@@ -161,7 +177,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     setState(() => _isSaving = true);
     try {
       await AuthService.updateProfile(
-        fullName: _nameCtrl.text,
+        firstName: _firstNameCtrl.text,
+        middleName: _middleNameCtrl.text,
+        lastName: _lastNameCtrl.text,
         email: _emailCtrl.text,
         contactNumber: _phoneCtrl.text,
         address: _addressCtrl.text.isNotEmpty ? _addressCtrl.text : null,
@@ -393,11 +411,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                   backgroundColor: AppColors.surface,
                   backgroundImage: _newPhotoBytes != null
                       ? MemoryImage(_newPhotoBytes!)
-                      : null,
+                      : (_profilePhotoUrl != null && _profilePhotoUrl!.isNotEmpty
+                          ? NetworkImage(_profilePhotoUrl!) as ImageProvider
+                          : null),
                   child: !hasPhoto
                       ? Text(
-                          _nameCtrl.text.isNotEmpty
-                              ? _nameCtrl.text[0].toUpperCase()
+                          _firstNameCtrl.text.isNotEmpty
+                              ? _firstNameCtrl.text[0].toUpperCase()
                               : '?',
                           style: const TextStyle(
                             fontSize: 38,
@@ -460,13 +480,31 @@ class _ProfileScreenState extends State<ProfileScreen>
             _buildSectionLabel('Personal Information'),
             const SizedBox(height: 14),
 
-            // Full Name
+            // First Name
             _buildFormField(
-              controller: _nameCtrl,
-              label: 'Full Name',
+              controller: _firstNameCtrl,
+              label: 'First Name',
               icon: Icons.person_outline_rounded,
               validator: (val) =>
-                  val == null || val.isEmpty ? 'Name is required' : null,
+                  val == null || val.isEmpty ? 'First name is required' : null,
+            ),
+            const SizedBox(height: 14),
+
+            // Middle Name
+            _buildFormField(
+              controller: _middleNameCtrl,
+              label: 'Middle Name (Optional)',
+              icon: Icons.person_outline_rounded,
+            ),
+            const SizedBox(height: 14),
+
+            // Last Name
+            _buildFormField(
+              controller: _lastNameCtrl,
+              label: 'Last Name',
+              icon: Icons.person_outline_rounded,
+              validator: (val) =>
+                  val == null || val.isEmpty ? 'Last name is required' : null,
             ),
             const SizedBox(height: 14),
 
@@ -505,11 +543,21 @@ class _ProfileScreenState extends State<ProfileScreen>
               maxLines: 2,
             ),
 
-            // Tour Guide ID (read-only)
-            if (_tourGuideId != null) ...[
+            // Username (read-only)
+            if (_username != null && _username!.isNotEmpty) ...[
               const SizedBox(height: 14),
               _buildReadOnlyField(
-                label: 'Tour Guide ID',
+                label: 'Username',
+                value: _username!,
+                icon: Icons.alternate_email_rounded,
+              ),
+            ],
+
+            // Tour Guide ID (read-only)
+            if (_tourGuideId != null && _tourGuideId!.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              _buildReadOnlyField(
+                label: 'DOT Tour Guide ID',
                 value: _tourGuideId!,
                 icon: Icons.badge_outlined,
               ),

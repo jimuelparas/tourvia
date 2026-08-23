@@ -22,7 +22,8 @@ The TOURVIA application is built on a modern, cross-platform technical stack uti
 | **Object Storage** | Firebase Storage | Hosting of user photos, uploaded DOT ID cards, and group chat media. |
 | **Notification Engine** | Firebase Cloud Messaging (FCM) | Server-to-client push notification broadcasts for SOS alerts. |
 | **AI Vision Model** | Google Gemini Vision API (`gemini-1.5-flash`) | Automated verification of Department of Tourism (DOT) ID cards. |
-| **AI NLP Model** | OpenAI API (`gpt-4o-mini`) | Context-restricted Philippine tourism assistant. |
+| **AI NLP Model** | Google Gemini Generative AI API (`gemini-1.5-flash` / `gemini-2.0-flash`) | Context-restricted Philippine tourism assistant. |
+| **Weather Service** | OpenWeatherMap REST API | Real-time weather conditions, temperature, humidity, and forecasts. |
 | **Map Rendering** | OpenStreetMap (OSM) Tiles | Interactive base mapping via `flutter_map`. |
 
 ---
@@ -71,6 +72,11 @@ This module governs app access, splitting entry workflows by user role: Tour Gui
     *   Prompts the tourist to enter their name.
     *   Registers their device FCM token in the session sub-collection.
     *   Maps the tourist’s app instance to that specific active tour session.
+*   **5-Attempt Rate Limiting & 15-Minute Lockout:** To safeguard the application against brute-force attacks and unauthorized access attempts:
+    *   *Tour Guide Login:* Limits failed credential submissions to a maximum of 5 consecutive attempts. Upon the 5th failure, the login action is locked for 15 minutes with a live countdown display.
+    *   *Tourist Code Entry:* Restricts invalid access code submissions to 5 consecutive attempts, triggering a 15-minute lockout upon limit breach.
+    *   *Tour Guide Registration:* Restricts failed registration and AI ID verification attempts to 5 consecutive submissions before locking the registration workflow for 15 minutes.
+    *   *Automatic Counter Reset:* Successful authentication or registration immediately resets the failed attempts counter to zero.
 *   **Forgot Password Flow:** Sends a password reset email link via Firebase Auth.
 
 #### Complete User Workflow
@@ -287,10 +293,11 @@ This module handles the configuration and execution of the AI services integrate
     *   Structures parameters to require a clean, parseable JSON response.
     *   Handles network timeouts and invalid inputs gracefully.
 *   **NLP Tourist Assistant (`ChatbotService`):**
-    *   Uses OpenAI's `gpt-4o-mini` to power the chatbot assistant.
-    *   Applies system prompts that restrict responses to Philippine tourism topics.
-    *   Blocks off-topic queries with a standard response: *"I can only help you with questions about Philippine tourist destinations."*
-    *   Features quick-prompt chips for popular destinations (Intramuros, Baguio, Boracay, Palawan) to streamline search inputs.
+    *   Powered by the Google Gemini API (`gemini-1.5-flash` and `gemini-2.0-flash`) via the Google Generative Language REST API.
+    *   Applies a strict non-Philippines refusal policy: explicitly declines queries regarding foreign destinations (e.g., Tokyo, Paris, Bali, New York) and prompts users to explore any of the 7,641 Philippine islands.
+    *   Structured Markdown response formatting: delivers responses with captivating introductions, numbered sections (Overview, Key Attractions, Culture & Activities, Local Delicacies, Practical Travel Tips), and bulleted highlights.
+    *   Multilingual natural language processing supporting English, Filipino (Tagalog), and Taglish.
+    *   Features quick-prompt chips for popular Philippine destinations (e.g., Intramuros, Baguio, Boracay, Palawan) to streamline search inputs.
 
 ---
 
@@ -512,12 +519,12 @@ To function properly, the application depends on several external systems and co
 
 1.  **Continuous Internet Access:** TOURVIA requires an active internet connection (cellular data or Wi-Fi) to sync real-time features like GPS tracking, group chat, AI chatbot responses, and push notifications.
 2.  **GPS Hardware Dependency:** Devices must have functional GPS hardware and system location services enabled.
-3.  **Third-Party API Uptime:** The app depends on the availability of the Google Gemini API, OpenAI API, and OpenStreetMap tile servers.
+3.  **Third-Party API Uptime:** The app depends on the availability of the Google Gemini API (Generative Language & Vision), OpenWeatherMap API, and OpenStreetMap tile servers.
 4.  **Accreditation ID Quality:** The accuracy of the automated ID verification depends on the user uploading clear, well-lit photos of authentic DOT ID cards.
 5.  **Single Active Session:** The system assumes a guide manages only one active tour session at a time, using a single session identifier.
 
 ---
 
-> **Document Version:** 1.1  
-> **Last Updated:** July 2026  
+> **Document Version:** 1.2  
+> **Last Updated:** August 2026  
 > **Target Application:** TOURVIA Mobile App (Philippines)

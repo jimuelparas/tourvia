@@ -11,8 +11,8 @@ An actor represents a role played by a user or an external system interacting wi
 
 1.  **Tour Guide (Primary Actor - Human):** The user responsible for setting up the session, building the itinerary, monitoring tourists, checking attendance, and ending the tour.
 2.  **Tourist (Primary Actor - Human):** The traveler who joins the session using a temporary code, views the itinerary, tracks their position relative to the guide, and uses communication tools.
-3.  **Google Gemini Vision API (Secondary Actor - System):** The external AI service that scans, parses, and validates the Tour Guide's Department of Tourism (DOT) Accreditation ID card.
-4.  **OpenAI API (Secondary Actor - System):** The external AI NLP service that acts as the knowledge base for answering travel queries about the Philippines.
+3.  **Google Gemini Vision API (Secondary Actor - System):** The external multimodal AI service that scans, parses, and validates the Tour Guide's Department of Tourism (DOT) Accreditation ID card.
+4.  **Google Gemini Generative AI API (Secondary Actor - System):** The external AI NLP service that acts as the knowledge base for answering travel queries about the Philippines.
 
 ---
 
@@ -88,7 +88,7 @@ graph TB
     
     subgraph External_Actors [External Systems]
         Gemini[Google Gemini API]
-        OpenAI[OpenAI API]
+        GeminiChat[Google Gemini AI API]
     end
 
     %% System Boundary
@@ -165,7 +165,7 @@ graph TB
 
     %% External System Associations
     Gemini --> UC2
-    OpenAI --> UC23
+    GeminiChat --> UC23
 
     %% Relationships
     UC1 -.->|includes| UC2
@@ -185,7 +185,7 @@ graph TB
 1.  **Layout Setup:**
     *   Draw a large rectangle in the center representing the **TOURVIA System Boundary**.
     *   Place human actors (**Tour Guide** on the left, **Tourist** on the right) outside the boundary.
-    *   Place system actors (**Google Gemini API** and **OpenAI API** on the right or bottom) outside the boundary.
+    *   Place system actors (**Google Gemini Vision API** and **Google Gemini AI API** on the right or bottom) outside the boundary.
 2.  **Ovals (Use Cases):**
     *   Represent every action as an oval inside the rectangle. Group them logically (e.g., authentication use cases at the top, emergency/chat at the bottom).
 3.  **Connecting Lines:**
