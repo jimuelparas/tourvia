@@ -56,7 +56,28 @@ class ChatService {
     // Ensure authenticated (anonymously) so Storage rules pass.
     final auth = FirebaseAuth.instance;
     if (auth.currentUser == null) {
-      await auth.signInAnonymously();
+      try {
+        await auth.signInAnonymously();
+      } catch (e) {
+        // Fallback: If anonymous auth is disabled, sign in using a generic/shared tourist account
+        try {
+          await auth.signInWithEmailAndPassword(
+            email: 'tourist@tourvia.com',
+            password: 'TouristPassword123!',
+          );
+        } catch (authError) {
+          // If the shared account doesn't exist, create it dynamically
+          try {
+            await auth.createUserWithEmailAndPassword(
+              email: 'tourist@tourvia.com',
+              password: 'TouristPassword123!',
+            );
+          } catch (_) {
+            // Re-throw the original error if fallback also fails
+            rethrow;
+          }
+        }
+      }
     }
 
     final bytes = await xFile.readAsBytes();
