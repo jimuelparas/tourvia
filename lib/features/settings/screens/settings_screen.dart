@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/models/tourist_session.dart';
+import '../../../core/services/sos_notification_service.dart';
 import '../../auth/screens/terms_and_conditions_screen.dart';
 import '../../auth/screens/role_selection_screen.dart';
 import 'about_app_screen.dart';
@@ -62,6 +63,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               final navigator = Navigator.of(context);
 
               // Perform real logout
+              SosNotificationService.instance.onLogout();
               if (TouristSessionManager.isLoggedIn) {
                 await TouristSessionManager.clear();
               } else if (AuthService.currentUser != null) {
