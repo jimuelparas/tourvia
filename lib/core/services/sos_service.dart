@@ -96,11 +96,7 @@ class SosService {
 
   /// Real-time stream of only ACTIVE (unresolved) alerts.
   static Stream<List<SosAlert>> watchActiveAlerts(String sessionId) {
-    return _sosCol(sessionId)
-        .where('isResolved', isEqualTo: false)
-        .orderBy('timestamp', descending: true)
-        .snapshots()
-        .map((snap) =>
-            snap.docs.map((doc) => SosAlert.fromFirestore(doc.id, doc.data())).toList());
+    return watchAlerts(sessionId).map((alerts) =>
+        alerts.where((a) => !a.isResolved).toList());
   }
 }

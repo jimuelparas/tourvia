@@ -200,8 +200,12 @@ class LocationService {
       }
 
       if (kIsWeb) {
-        // On Flutter web, assets are served at assets/assets/...
-        await player.play(UrlSource('assets/assets/audio/alarm.wav'));
+        // On Flutter web, assets can be served at assets/assets/ or assets/
+        try {
+          await player.play(UrlSource('assets/assets/audio/alarm.wav'));
+        } catch (_) {
+          await player.play(UrlSource('assets/audio/alarm.wav'));
+        }
       } else {
         await player.play(AssetSource('audio/alarm.wav'));
       }
