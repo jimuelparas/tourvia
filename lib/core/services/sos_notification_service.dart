@@ -153,17 +153,6 @@ class SosNotificationService {
           ),
           actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                // Interactive gesture allows bypassing browser audio restrictions
-                LocationService.startEmergencyRing();
-              },
-              child: const Text(
-                'Mute / Dismiss',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            ),
             if (isGuide)
               ElevatedButton.icon(
                 onPressed: () async {
