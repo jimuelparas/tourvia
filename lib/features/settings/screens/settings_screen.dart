@@ -99,18 +99,21 @@ class _SettingsScreenState extends State<SettingsScreen>
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _buildSectionHeader('Account'),
-            _buildListTile(
-              context,
-              icon: Icons.person_outline_rounded,
-              title: 'My Profile',
-              subtitle: 'View and edit your personal information',
-              onTap: () => Navigator.push(
+            if (!TouristSessionManager.isLoggedIn &&
+                AuthService.currentUser != null) ...[
+              _buildSectionHeader('Account'),
+              _buildListTile(
                 context,
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                icon: Icons.person_outline_rounded,
+                title: 'My Profile',
+                subtitle: 'View and edit your personal information',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+            ],
             _buildSectionHeader('Application'),
             _buildListTile(
               context,

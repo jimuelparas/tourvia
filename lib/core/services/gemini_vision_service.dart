@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../config/app_config.dart';
 import 'package:http/http.dart' as http;
 
 /// Result from Gemini Vision ID verification.
@@ -133,10 +133,10 @@ If the image is NOT a DOT Tour Guide ID at all, set isOfficialDotId to false and
     Uint8List imageBytes, {
     String mimeType = 'image/jpeg',
   }) async {
-    final apiKey = dotenv.env['GEMINI_API_KEY'];
-    if (apiKey == null || apiKey.isEmpty || apiKey == 'your_key_here') {
+    final apiKey = AppConfig.geminiApiKey;
+    if (apiKey == null || apiKey.isEmpty) {
       return GeminiIdVerificationResult.failed(
-        'Gemini API key not configured. Please add GEMINI_API_KEY to .env.',
+        'Gemini API key not configured. Please set GEMINI_API_KEY in environment or .env.',
       );
     }
 

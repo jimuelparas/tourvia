@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'core/models/tourist_session.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/sos_notification_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/app_colors.dart';
 import 'features/auth/screens/role_selection_screen.dart';
@@ -142,6 +143,8 @@ class _AuthGateState extends State<AuthGate> {
     // Check for tourist session first
     await TouristSessionManager.loadSession();
     if (TouristSessionManager.isLoggedIn) {
+      // Start SOS monitoring for the tourist session
+      SosNotificationService.instance.startFromCurrentSession();
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const TouristDashboardScreen()),
@@ -180,6 +183,11 @@ class _AuthGateState extends State<AuthGate> {
 
         // If a Firebase user exists, it's a Tour Guide
         if (snapshot.hasData && snapshot.data != null) {
+          // Start SOS monitoring for the tour guide session
+          SosNotificationService.instance.startWatching(
+            sessionId: snapshot.data!.uid,
+            currentUserId: snapshot.data!.uid,
+          );
           return const TourGuideDashboardScreen();
         }
 

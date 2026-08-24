@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/tour_session_service.dart';
 import '../../../core/services/attendance_service.dart';
 import '../../../core/services/sos_service.dart';
-import '../../../core/services/location_service.dart';
+import '../../../core/services/sos_notification_service.dart';
 import 'tour_guide_attendance_screen.dart';
 import 'tour_guide_itinerary_screen.dart';
 import '../../chat/screens/group_chat_screen.dart';
@@ -36,8 +35,8 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
   // Session ID derived from the logged-in guide's UID for data isolation
   late final String _sessionId;
 
-  // SOS live monitoring
-  StreamSubscription<List<SosAlert>>? _sosSubscription;
+  // SOS live monitoring — delegated to SosNotificationService
+  StreamSubscription<List<SosAlert>>? _sosUiSubscription;
   List<SosAlert> _activeAlerts = [];
 
   @override
@@ -65,67 +64,26 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
       );
     }
 
-    // Listen for ALL live SOS alerts — blink and ring whenever any alert is active
-    _sosSubscription = SosService.watchActiveAlerts(_sessionId)
-        .listen((alerts) {
+    // Start the app-level SOS notification service for this session
+    SosNotificationService.instance.startWatching(
+      sessionId: _sessionId,
+      currentUserId: _sessionId,
+    );
+
+    // Subscribe to the service's stream for UI updates (blinking card)
+    _activeAlerts = SosNotificationService.instance.currentAlerts;
+    _sosUiSubscription = SosNotificationService.instance.activeAlertsStream.listen((alerts) {
       if (!mounted) return;
-
-      final prevCount = _activeAlerts.length;
       setState(() => _activeAlerts = alerts);
-
-      if (alerts.isNotEmpty) {
-        LocationService.startEmergencyRing();
-      } else {
-        LocationService.stopEmergencyRing();
-      }
-
-      // Show snackbar when a new SOS arrives from a tourist
-      if (alerts.length > prevCount && prevCount >= 0) {
-        final newest = alerts.first;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.emergency_rounded,
-                    color: Colors.white, size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '🚨 SOS from ${newest.senderName}!',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 14),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: AppColors.error,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 8),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
-            margin: const EdgeInsets.all(16),
-            action: SnackBarAction(
-              label: 'View',
-              textColor: Colors.white,
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SosScreen(
-                      sessionId: _sessionId),
-                ),
-              ),
-            ),
-          ),
-        );
-      }
     });
   }
 
   @override
   void dispose() {
     _animationController.dispose();
-    _sosSubscription?.cancel();
-    LocationService.stopEmergencyRing();
+    _sosUiSubscription?.cancel();
+    // Note: do NOT stop ringing or the SOS service here.
+    // Ringing is managed by SosNotificationService at the app level.
     super.dispose();
   }
 
@@ -144,11 +102,8 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
               children: [
                 _buildHeader(),
                 const SizedBox(height: 24),
-                // Live SOS alert banner — shows only when there are active alerts
-                if (_activeAlerts.isNotEmpty) ...[  
-                  _buildSosAlertBanner(),
-                  const SizedBox(height: 16),
-                ],
+                // SOS alert banner removed — alerts now handled via
+                // SosNotificationService with persistent ringing.
                 _buildActiveTourBanner(),
                 Text(
                   'Quick Modules',
@@ -161,119 +116,6 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  // ── SOS Alert Banner (shows when tourists send SOS) ─────────
-  Widget _buildSosAlertBanner() {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => SosScreen(sessionId: _sessionId),
-        ),
-      ),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.error,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.error.withValues(alpha: 0.35),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.emergency_rounded,
-                  color: Colors.white, size: 26),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '🚨 ${_activeAlerts.length} Active SOS Alert${_activeAlerts.length > 1 ? 's' : ''}!',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    _activeAlerts.length == 1
-                        ? '${_activeAlerts.first.senderName} needs help! Tap to respond.'
-                        : '${_activeAlerts.map((a) => a.senderName).join(', ')} need help!',
-                    style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 12),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            // Open map at SOS location
-            if (_activeAlerts.first.lat != 0.0)
-              IconButton(
-                tooltip: 'Open location in Maps',
-                icon: const Icon(Icons.map_rounded,
-                    color: Colors.white, size: 22),
-                onPressed: () async {
-                  final a = _activeAlerts.first;
-                  final url =
-                      'https://www.google.com/maps/search/?api=1&query=${a.lat},${a.lng}';
-                  final uri = Uri.parse(url);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri,
-                        mode: LaunchMode.externalApplication);
-                  }
-                },
-              ),
-            const SizedBox(width: 8),
-            // Resolve button
-            TextButton.icon(
-              style: TextButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: AppColors.error,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              icon: const Icon(Icons.check_rounded, size: 16),
-              label: const Text(
-                'Resolve',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-              ),
-              onPressed: () async {
-                // Mark all active alerts as resolved
-                for (final alert in List<SosAlert>.from(_activeAlerts)) {
-                  await SosService.resolveAlert(
-                    sessionId: _sessionId,
-                    alertId: alert.id,
-                  );
-                }
-              },
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded,
-                color: Colors.white),
-          ],
         ),
       ),
     );

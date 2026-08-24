@@ -107,6 +107,17 @@ class _ChatbotScreenState extends State<ChatbotScreen>
       });
     } catch (e) {
       if (!mounted) return;
+      final rawError = e.toString().replaceFirst('Exception: ', '').trim();
+      final String errorMessage;
+      if (rawError.contains('GEMINI_API_KEY') || rawError.contains('API key')) {
+        errorMessage = '⚠️ **AI Assistant is not configured yet.**\n\n'
+            'Please configure your `GEMINI_API_KEY` in Codemagic environment variables or `assets/env/.env`.';
+      } else {
+        errorMessage = '⚠️ Sorry, I couldn\'t get a response right now. '
+            'Please check your internet connection and try again.\n\n'
+            'Error: $rawError';
+      }
+
       setState(() {
         _isTyping = false;
         _messages.add(
@@ -114,9 +125,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
             id: 'err_${DateTime.now().millisecondsSinceEpoch}',
             senderId: 'ai_bot',
             senderName: 'Tourvia AI',
-            text: '⚠️ Sorry, I couldn\'t get a response right now. '
-                'Please check your internet connection and try again.\n\n'
-                'Error: ${e.toString().replaceFirst('Exception: ', '')}',
+            text: errorMessage,
             timestamp: DateTime.now(),
             isGuide: true,
           ),

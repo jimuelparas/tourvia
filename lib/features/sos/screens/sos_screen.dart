@@ -32,9 +32,6 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin, Ro
 
   bool _isSending = false;
 
-  /// Watches for new SOS alerts to ring the recipient.
-  StreamSubscription<List<SosAlert>>? _sosRingSubscription;
-
   @override
   void initState() {
     super.initState();
@@ -55,8 +52,8 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin, Ro
     _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
     _fadeController.forward();
 
-    // Start listening for incoming SOS alerts to ring the recipient
-    _startSosRingListener();
+    // Note: SOS ringing is managed by the app-level SosNotificationService.
+    // This screen no longer starts/stops the ring — it only sends and resolves alerts.
   }
 
   @override
@@ -65,40 +62,11 @@ class _SosScreenState extends State<SosScreen> with TickerProviderStateMixin, Ro
     routeObserver.subscribe(this, ModalRoute.of(context)!);
   }
 
-  /// Listens for new SOS alerts and manages ring on this screen.
-  void _startSosRingListener() {
-    _sosRingSubscription = SosService.watchActiveAlerts(widget.sessionId).listen((alerts) {
-      if (!mounted) return;
-
-      // Determine the current user's ID to exclude self-sent alerts
-      final isTourist = TouristSessionManager.isLoggedIn;
-      final currentUserId = isTourist
-          ? (TouristSessionManager.current?.codeDocId ?? '')
-          : (AuthService.currentUser?.uid ?? '');
-
-      // Incoming alerts are those NOT sent by the current user
-      final incomingAlerts = alerts.where((a) => a.senderId != currentUserId).toList();
-
-      if (incomingAlerts.isNotEmpty) {
-        LocationService.startEmergencyRing();
-      } else {
-        // Stop ring as soon as there are no more incoming active alerts
-        // (covers both: guide resolved OR tourist resolved from this screen)
-        LocationService.stopEmergencyRing();
-      }
-    });
-  }
-
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
     _pulseController.dispose();
     _fadeController.dispose();
-    _sosRingSubscription?.cancel();
-    // Note: do NOT call stopEmergencyRing() here.
-    // The ring is managed by the dashboard listeners (TourGuideHomeScreen /
-    // TouristHomeScreen), which keep running while this screen is on the stack.
-    // Stopping here would kill the ring even while alerts are still active.
     super.dispose();
   }
 

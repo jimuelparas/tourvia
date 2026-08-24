@@ -399,31 +399,33 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
             ),
 
           // ── Tourist Management Draggable Panel ─────────────────
-          IgnorePointer(
-            ignoring: !_showPanel,
-            child: NotificationListener<DraggableScrollableNotification>(
-              onNotification: (notification) {
-                if (notification.extent <= 0.01 && _showPanel) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) setState(() => _showPanel = false);
-                  });
-                } else if (notification.extent > 0.01 && !_showPanel) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) setState(() => _showPanel = true);
-                  });
-                }
-                return false;
-              },
-              child: DraggableScrollableSheet(
-                controller: _sheetController,
-                initialChildSize: 0.0,
-                minChildSize: 0.0,
-                maxChildSize: 0.85,
-                snap: true,
-                snapSizes: const [0.0, 0.45, 0.85],
-                builder: (context, scrollCtrl) {
-                  return _buildManagementPanel(scrollCtrl);
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: !_showPanel,
+              child: NotificationListener<DraggableScrollableNotification>(
+                onNotification: (notification) {
+                  if (notification.extent <= 0.01 && _showPanel) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) setState(() => _showPanel = false);
+                    });
+                  } else if (notification.extent > 0.01 && !_showPanel) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) setState(() => _showPanel = true);
+                    });
+                  }
+                  return false;
                 },
+                child: DraggableScrollableSheet(
+                  controller: _sheetController,
+                  initialChildSize: 0.0,
+                  minChildSize: 0.0,
+                  maxChildSize: 0.85,
+                  snap: true,
+                  snapSizes: const [0.0, 0.45, 0.85],
+                  builder: (context, scrollCtrl) {
+                    return _buildManagementPanel(scrollCtrl);
+                  },
+                ),
               ),
             ),
           ),
@@ -681,6 +683,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
     final outsideCount = _tourists.where(_isOutside).length;
 
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),

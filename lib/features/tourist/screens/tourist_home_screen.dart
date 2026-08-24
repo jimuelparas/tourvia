@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/services/location_service.dart';
 import '../../../core/services/sos_service.dart';
+import '../../../core/services/sos_notification_service.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/models/tourist_session.dart';
@@ -26,113 +26,47 @@ class TouristHomeScreen extends StatefulWidget {
 }
 
 class _TouristHomeScreenState extends State<TouristHomeScreen> {
-  StreamSubscription<List<SosAlert>>? _sosSubscription;
+  StreamSubscription<List<SosAlert>>? _sosUiSubscription;
   List<SosAlert> _activeAlerts = [];
 
   @override
   void initState() {
     super.initState();
-    // Try immediately; also retry after first frame in case
-    // TouristSessionManager hasn't loaded the session yet at startup.
-    _setupSosSubscription();
+    // Start the app-level SOS notification service for this session
+    _startSosService();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _setupSosSubscription();
+      _startSosService();
     });
   }
 
-  // Sets up the Firestore SOS subscription if the session is available
-  // and the subscription hasn't been created yet.
-  void _setupSosSubscription() {
-    if (_sosSubscription != null) return; // already running
-    final sessionId = TouristSessionManager.current?.sessionId ?? '';
-    if (sessionId.isEmpty) return;
+  void _startSosService() {
+    if (_sosUiSubscription != null) return; // already running
+    final session = TouristSessionManager.current;
+    if (session == null) return;
 
-    _sosSubscription = SosService.watchActiveAlerts(sessionId).listen((alerts) {
+    // Start the app-level SOS notification service
+    SosNotificationService.instance.startWatching(
+      sessionId: session.sessionId,
+      currentUserId: session.codeDocId,
+    );
+
+    // Subscribe to the service's stream for UI updates (blinking card)
+    _activeAlerts = SosNotificationService.instance.currentAlerts;
+    _sosUiSubscription = SosNotificationService.instance.activeAlertsStream.listen((alerts) {
       if (!mounted) return;
       setState(() => _activeAlerts = alerts);
-
-      if (alerts.isNotEmpty) {
-        LocationService.startEmergencyRing();
-      } else {
-        LocationService.stopEmergencyRing();
-      }
     });
   }
 
   @override
   void dispose() {
-    _sosSubscription?.cancel();
-    LocationService.stopEmergencyRing();
+    _sosUiSubscription?.cancel();
+    // Note: do NOT stop ringing or the SOS service here.
+    // Ringing is managed by SosNotificationService at the app level.
     super.dispose();
   }
 
-  Widget _buildSosAlertBanner() {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => SosScreen(
-            sessionId: TouristSessionManager.current?.sessionId ?? '',
-          ),
-        ),
-      ),
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.error,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.error.withValues(alpha: 0.35),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.emergency_rounded,
-                  color: Colors.white, size: 26),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '🚨 Emergency from Guide!',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'The tour guide needs immediate assistance! Tap to view details.',
-                    style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 12),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: Colors.white),
-          ],
-        ),
-      ),
-    );
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -146,8 +80,8 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
               _buildHeader(),
               const SizedBox(height: 32),
               if (_activeAlerts.isNotEmpty) ...[
-                _buildSosAlertBanner(),
-                const SizedBox(height: 16),
+                // SOS alert banner removed — alerts now handled via
+                // SosNotificationService with persistent ringing.
               ],
               _buildMainActionCard(),
               const SizedBox(height: 32),

@@ -1,11 +1,11 @@
 import 'dart:convert';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../config/app_config.dart';
 import 'package:http/http.dart' as http;
 
 /// Service that connects to Google Gemini (Step 11 / US-21).
 ///
 /// Enforces a Philippines-only tourism scope via the system prompt.
-/// API key is loaded from the `.env` asset file via flutter_dotenv.
+/// API key is loaded from the AppConfig (supports `.env` asset file and compile-time environment variables).
 class ChatbotService {
   ChatbotService._();
 
@@ -34,9 +34,9 @@ RESPONSE FORMATTING (Gemini Design Style):
 
   /// Sends [userMessage] to Gemini REST API and returns the assistant's reply.
   static Future<String> ask(String userMessage) async {
-    final apiKey = dotenv.env['GEMINI_API_KEY'] ?? dotenv.env['OPENAI_API_KEY'];
+    final apiKey = AppConfig.geminiApiKey;
     if (apiKey == null || apiKey.isEmpty) {
-      throw Exception('GEMINI_API_KEY not found in .env file.');
+      throw Exception('Gemini API key is not configured. Please set GEMINI_API_KEY in your environment or assets/env/.env.');
     }
 
     final candidateModels = [
