@@ -71,8 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               }
 
               navigator.pushAndRemoveUntil(
-                MaterialPageRoute(
-                    builder: (_) => const RoleSelectionScreen()),
+                MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
                 (route) => false,
               );
             },
@@ -80,7 +79,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               backgroundColor: AppColors.error,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             child: const Text('Log Out'),
           ),
@@ -135,7 +135,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => const AboutDevelopersScreen()),
+                  builder: (_) => const AboutDevelopersScreen(),
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -166,7 +167,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.error,
                   side: BorderSide(
-                      color: AppColors.error.withValues(alpha: 0.3)),
+                    color: AppColors.error.withValues(alpha: 0.3),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -178,10 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             Center(
               child: Text(
                 'Tourvia Version 1.0.0',
-                style: TextStyle(
-                  color: AppColors.textHint,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: AppColors.textHint, fontSize: 12),
               ),
             ),
             const SizedBox(height: 16),
@@ -229,20 +228,17 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
           child: Icon(icon, color: AppColors.primary),
         ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(
           subtitle,
-          style:
-              const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
         ),
-        trailing: const Icon(Icons.chevron_right_rounded,
-            color: AppColors.textHint),
+        trailing: const Icon(
+          Icons.chevron_right_rounded,
+          color: AppColors.textHint,
+        ),
         onTap: onTap,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
