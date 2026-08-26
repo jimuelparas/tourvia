@@ -423,12 +423,12 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                   snap: true,
                   snapSizes: const [0.0, 0.45, 0.85],
                   builder: (context, scrollCtrl) {
-                    return ClipRRect(
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(24),
-                      ),
-                      child: _buildManagementPanel(scrollCtrl),
-                    );
+                    // Don't render panel content when collapsed to prevent
+                    // text from overflowing vertically at zero height.
+                    if (!_showPanel) {
+                      return ListView(controller: scrollCtrl);
+                    }
+                    return _buildManagementPanel(scrollCtrl);
                   },
                 ),
               ),
