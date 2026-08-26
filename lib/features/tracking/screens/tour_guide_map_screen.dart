@@ -216,7 +216,6 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   void _focusOnTourist(UserLocation tourist) {
     setState(() {
       _selectedTourist = tourist;
-      _showPanel = false;
     });
     _mapController.move(LatLng(tourist.latitude, tourist.longitude), 17.0);
     // Hide the panel so the quick action card is visible
@@ -289,20 +288,18 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
             ),
             onPressed: () {
               if (!_showPanel) {
-                // Open: add panel to tree, then animate after it's built
-                setState(() => _showPanel = true);
-                WidgetsBinding.instance.addPostFrameCallback((_) {
+                // Ensure pointer event finishes before changing state
+                Future.microtask(() {
+                  if (mounted) setState(() => _showPanel = true);
                   if (_sheetController.isAttached) {
                     _sheetController.animateTo(
                       0.45,
-                      duration: const Duration(milliseconds: 350),
+                      duration: const Duration(milliseconds: 300),
                       curve: Curves.easeOut,
                     );
                   }
                 });
               } else {
-                // Close: animate to 0 first; notification listener
-                // will set _showPanel = false once extent ≤ 0.01
                 if (_sheetController.isAttached) {
                   _sheetController.animateTo(
                     0.0,
@@ -393,41 +390,52 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
           ),
 
           // ── Selected tourist quick-action card ────────────────
-          if (_selectedTourist != null && !_showPanel)
-            Positioned(
-              bottom: 16,
-              left: 16,
-              right: 16,
-              child: SafeArea(
-                child: _buildQuickCard(_selectedTourist!),
-              ),
-            ),
-
-          // ── Tourist Management Draggable Panel ─────────────────
-          if (_showPanel)
-            Positioned.fill(
-              child: NotificationListener<DraggableScrollableNotification>(
-                onNotification: (notification) {
-                  if (notification.extent <= 0.01 && _showPanel) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) setState(() => _showPanel = false);
-                    });
-                  }
-                  return false;
-                },
-                child: DraggableScrollableSheet(
-                  controller: _sheetController,
-                  initialChildSize: 0.0,
-                  minChildSize: 0.0,
-                  maxChildSize: 0.85,
-                  snap: true,
-                  snapSizes: const [0.0, 0.45, 0.85],
-                  builder: (context, scrollCtrl) {
-                    return _buildManagementPanel(scrollCtrl);
-                  },
+          Positioned(
+            bottom: 16,
+            left: 16,
+            right: 16,
+            child: IgnorePointer(
+              ignoring: _selectedTourist == null || _showPanel,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: (_selectedTourist != null && !_showPanel) ? 1.0 : 0.0,
+                child: SafeArea(
+                  child: _selectedTourist != null
+                      ? _buildQuickCard(_selectedTourist!)
+                      : const SizedBox.shrink(),
                 ),
               ),
             ),
+          ),
+
+          // ── Tourist Management Draggable Panel ─────────────────
+          Positioned.fill(
+            child: NotificationListener<DraggableScrollableNotification>(
+              onNotification: (notification) {
+                if (notification.extent <= 0.01 && _showPanel) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) setState(() => _showPanel = false);
+                  });
+                } else if (notification.extent > 0.01 && !_showPanel) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) setState(() => _showPanel = true);
+                  });
+                }
+                return false;
+              },
+              child: DraggableScrollableSheet(
+                controller: _sheetController,
+                initialChildSize: 0.0,
+                minChildSize: 0.0,
+                maxChildSize: 0.85,
+                snap: true,
+                snapSizes: const [0.0, 0.45, 0.85],
+                builder: (context, scrollCtrl) {
+                  return _buildManagementPanel(context, scrollCtrl);
+                },
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -676,13 +684,15 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
           );
   }
 
-  // ── Tourist Management Panel ────────────────────────────────
-  Widget _buildManagementPanel(ScrollController scrollCtrl) {
+  Widget _buildManagementPanel(BuildContext ctx, ScrollController scrollCtrl) {
     final sorted = _sortedTourists;
     final outsideCount = _tourists.where(_isOutside).length;
+    // ignore: avoid_print
+    print('PANEL BUILD: _tourists.length = ${_tourists.length}, sorted.length = ${sorted.length}');
 
     return Container(
-      width: double.infinity,
+      width: MediaQuery.of(ctx).size.width,
+      clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
