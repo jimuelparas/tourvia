@@ -423,7 +423,12 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                   snap: true,
                   snapSizes: const [0.0, 0.45, 0.85],
                   builder: (context, scrollCtrl) {
-                    return _buildManagementPanel(scrollCtrl);
+                    return ClipRRect(
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(24),
+                      ),
+                      child: _buildManagementPanel(scrollCtrl),
+                    );
                   },
                 ),
               ),
@@ -684,6 +689,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
 
     return Container(
       width: double.infinity,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
