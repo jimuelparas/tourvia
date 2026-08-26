@@ -423,12 +423,10 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                   snap: true,
                   snapSizes: const [0.0, 0.45, 0.85],
                   builder: (context, scrollCtrl) {
-                    // Don't render panel content when collapsed to prevent
-                    // text from overflowing vertically at zero height.
-                    if (!_showPanel) {
-                      return ListView(controller: scrollCtrl);
-                    }
-                    return _buildManagementPanel(scrollCtrl);
+                    return Opacity(
+                      opacity: _showPanel ? 1.0 : 0.0,
+                      child: _buildManagementPanel(scrollCtrl),
+                    );
                   },
                 ),
               ),
@@ -689,7 +687,6 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
 
     return Container(
       width: double.infinity,
-      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
