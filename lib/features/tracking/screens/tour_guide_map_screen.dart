@@ -551,25 +551,21 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   Widget _buildQuickCard(UserLocation tourist) {
     final dist = _distanceTo(tourist);
     final outside = dist > 1000.0;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: outside
-              ? AppColors.error.withValues(alpha: 0.3)
-              : AppColors.border,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(20),
+      elevation: 8,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: outside
+                ? AppColors.error.withValues(alpha: 0.3)
+                : AppColors.border,
           ),
-        ],
-      ),
-      child: Column(
+        ),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -690,22 +686,15 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
     // ignore: avoid_print
     print('PANEL BUILD: _tourists.length = ${_tourists.length}, sorted.length = ${sorted.length}');
 
-    return Container(
-      width: MediaQuery.of(ctx).size.width,
+    return Material(
+      color: AppColors.surface,
+      elevation: 16,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       clipBehavior: Clip.hardEdge,
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: SizedBox(
+        width: double.infinity,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // Drag handle
           Padding(
