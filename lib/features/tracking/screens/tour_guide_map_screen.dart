@@ -641,7 +641,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _actionBtn({
@@ -863,7 +863,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildTouristTile(UserLocation tourist) {
