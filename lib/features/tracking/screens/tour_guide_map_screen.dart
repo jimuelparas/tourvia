@@ -288,16 +288,21 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
               ],
             ),
             onPressed: () {
-              setState(() => _showPanel = !_showPanel);
-              if (_showPanel) {
-                if (_sheetController.isAttached) {
-                  _sheetController.animateTo(
-                    0.45,
-                    duration: const Duration(milliseconds: 350),
-                    curve: Curves.easeOut,
-                  );
-                }
+              if (!_showPanel) {
+                // Open: add panel to tree, then animate after it's built
+                setState(() => _showPanel = true);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (_sheetController.isAttached) {
+                    _sheetController.animateTo(
+                      0.45,
+                      duration: const Duration(milliseconds: 350),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                });
               } else {
+                // Close: animate to 0 first; notification listener
+                // will set _showPanel = false once extent ≤ 0.01
                 if (_sheetController.isAttached) {
                   _sheetController.animateTo(
                     0.0,
@@ -399,18 +404,13 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
             ),
 
           // ── Tourist Management Draggable Panel ─────────────────
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: !_showPanel,
+          if (_showPanel)
+            Positioned.fill(
               child: NotificationListener<DraggableScrollableNotification>(
                 onNotification: (notification) {
                   if (notification.extent <= 0.01 && _showPanel) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted) setState(() => _showPanel = false);
-                    });
-                  } else if (notification.extent > 0.01 && !_showPanel) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) setState(() => _showPanel = true);
                     });
                   }
                   return false;
@@ -423,15 +423,11 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                   snap: true,
                   snapSizes: const [0.0, 0.45, 0.85],
                   builder: (context, scrollCtrl) {
-                    return Opacity(
-                      opacity: _showPanel ? 1.0 : 0.0,
-                      child: _buildManagementPanel(scrollCtrl),
-                    );
+                    return _buildManagementPanel(scrollCtrl);
                   },
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
