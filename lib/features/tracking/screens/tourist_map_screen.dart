@@ -116,41 +116,42 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
     );
 
     // 2. Update map marker from device position stream
-    _localLocSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
-      ),
-    ).listen((pos) {
-      if (!mounted) return;
-      setState(() {
-        _touristPosition = LatLng(pos.latitude, pos.longitude);
-        _calcDistance();
-      });
-    });
+    _localLocSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          ),
+        ).listen((pos) {
+          if (!mounted) return;
+          setState(() {
+            _touristPosition = LatLng(pos.latitude, pos.longitude);
+            _calcDistance();
+          });
+        });
 
     // 3. Watch session locations to get guide position
     _allLocationsSubscription = LocationService.watchAllLocations(sessionId)
         .listen((locations) {
-      if (!mounted) return;
-      final guide = locations.firstWhere(
-        (l) => l.isGuide || l.userId == 'guide',
-        orElse: () => UserLocation(
-          userId: 'guide',
-          userName: 'Tour Guide',
-          latitude: _touristPosition.latitude,
-          longitude: _touristPosition.longitude,
-          accuracy: 0,
-          isGuide: true,
-          ringCommand: false,
-          updatedAt: DateTime.now(),
-        ),
-      );
-      setState(() {
-        _guidePosition = LatLng(guide.latitude, guide.longitude);
-        _calcDistance();
-      });
-    });
+          if (!mounted) return;
+          final guide = locations.firstWhere(
+            (l) => l.isGuide || l.userId == 'guide',
+            orElse: () => UserLocation(
+              userId: 'guide',
+              userName: 'Tour Guide',
+              latitude: _touristPosition.latitude,
+              longitude: _touristPosition.longitude,
+              accuracy: 0,
+              isGuide: true,
+              ringCommand: false,
+              updatedAt: DateTime.now(),
+            ),
+          );
+          setState(() {
+            _guidePosition = LatLng(guide.latitude, guide.longitude);
+            _calcDistance();
+          });
+        });
 
     // 4. Listen for ring command from guide
     _startRingListener();
@@ -208,7 +209,11 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 8),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        action: SnackBarAction(label: 'Dismiss', textColor: Colors.white, onPressed: () {}),
+        action: SnackBarAction(
+          label: 'Dismiss',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
       ),
     );
   }
@@ -216,14 +221,16 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
   Future<void> _routeToGuide() async {
     // Try geo: URI first (opens native maps app)
     final geoUri = Uri.parse(
-        'geo:${_guidePosition.latitude},${_guidePosition.longitude}'
-        '?q=${_guidePosition.latitude},${_guidePosition.longitude}');
+      'geo:${_guidePosition.latitude},${_guidePosition.longitude}'
+      '?q=${_guidePosition.latitude},${_guidePosition.longitude}',
+    );
     // Fallback: Google Maps directions link
     final mapsUri = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1'
-        '&origin=${_touristPosition.latitude},${_touristPosition.longitude}'
-        '&destination=${_guidePosition.latitude},${_guidePosition.longitude}'
-        '&travelmode=walking');
+      'https://www.google.com/maps/dir/?api=1'
+      '&origin=${_touristPosition.latitude},${_touristPosition.longitude}'
+      '&destination=${_guidePosition.latitude},${_guidePosition.longitude}'
+      '&travelmode=walking',
+    );
     try {
       if (await canLaunchUrl(geoUri)) {
         await launchUrl(geoUri);
@@ -266,10 +273,16 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.location_off_rounded, size: 64, color: AppColors.error),
+                const Icon(
+                  Icons.location_off_rounded,
+                  size: 64,
+                  color: AppColors.error,
+                ),
                 const SizedBox(height: 16),
-                const Text('Location Permission Denied',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text(
+                  'Location Permission Denied',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
                 const Text(
                   'Tourvia needs your location to display your position and ensure you stay within the safety boundary.',
@@ -282,7 +295,9 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   child: const Text('Grant Permissions'),
                 ),
@@ -309,31 +324,35 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
                 userAgentPackageName: 'com.tourvia.app',
               ),
               // 1 km safety circle centred on the guide
-              CircleLayer(circles: [
-                CircleMarker(
-                  point: _guidePosition,
-                  radius: 1000,
-                  useRadiusInMeter: true,
-                  color: AppColors.primary.withValues(alpha: 0.12),
-                  borderColor: AppColors.primary.withValues(alpha: 0.4),
-                  borderStrokeWidth: 2,
-                ),
-              ]),
+              CircleLayer(
+                circles: [
+                  CircleMarker(
+                    point: _guidePosition,
+                    radius: 1000,
+                    useRadiusInMeter: true,
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderColor: AppColors.primary.withValues(alpha: 0.4),
+                    borderStrokeWidth: 2,
+                  ),
+                ],
+              ),
               // Guide + Tourist markers
-              MarkerLayer(markers: [
-                _buildMarker(
-                  point: _guidePosition,
-                  label: 'Guide',
-                  icon: Icons.flag_rounded,
-                  color: AppColors.primary,
-                ),
-                _buildMarker(
-                  point: _touristPosition,
-                  label: TouristSessionManager.current?.touristName ?? 'You',
-                  icon: Icons.person_pin_circle_rounded,
-                  color: _isOutOfBounds ? AppColors.error : AppColors.accent,
-                ),
-              ]),
+              MarkerLayer(
+                markers: [
+                  _buildMarker(
+                    point: _guidePosition,
+                    label: 'Guide',
+                    icon: Icons.flag_rounded,
+                    color: AppColors.primary,
+                  ),
+                  _buildMarker(
+                    point: _touristPosition,
+                    label: TouristSessionManager.current?.touristName ?? 'You',
+                    icon: Icons.person_pin_circle_rounded,
+                    color: _isOutOfBounds ? AppColors.error : AppColors.accent,
+                  ),
+                ],
+              ),
             ],
           ),
 
@@ -345,7 +364,10 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
               child: CircleAvatar(
                 backgroundColor: Colors.white.withValues(alpha: 0.9),
                 child: IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textPrimary),
+                  icon: const Icon(
+                    Icons.arrow_back_rounded,
+                    color: AppColors.textPrimary,
+                  ),
                   onPressed: () => Navigator.pop(context),
                 ),
               ),
@@ -368,7 +390,10 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
                   // Distance info card
                   Container(
                     margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.95),
                       borderRadius: BorderRadius.circular(14),
@@ -384,8 +409,12 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          _isOutOfBounds ? Icons.warning_rounded : Icons.check_circle_rounded,
-                          color: _isOutOfBounds ? AppColors.error : AppColors.success,
+                          _isOutOfBounds
+                              ? Icons.warning_rounded
+                              : Icons.check_circle_rounded,
+                          color: _isOutOfBounds
+                              ? AppColors.error
+                              : AppColors.success,
                           size: 18,
                         ),
                         const SizedBox(width: 8),
@@ -396,7 +425,9 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 13,
-                            color: _isOutOfBounds ? AppColors.error : AppColors.success,
+                            color: _isOutOfBounds
+                                ? AppColors.error
+                                : AppColors.success,
                           ),
                         ),
                       ],
@@ -407,12 +438,16 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
                     icon: const Icon(Icons.directions_rounded),
                     label: const Text('Navigate to Guide'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _isOutOfBounds ? AppColors.error : AppColors.accent,
+                      backgroundColor: _isOutOfBounds
+                          ? AppColors.error
+                          : AppColors.accent,
                       foregroundColor: Colors.white,
                       elevation: 6,
                       minimumSize: const Size(double.infinity, 50),
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
                   ),
                 ],
@@ -443,7 +478,11 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
               color: Colors.white,
               borderRadius: BorderRadius.circular(10),
               boxShadow: const [
-                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 4,
+                  offset: Offset(0, 2),
+                ),
               ],
             ),
             child: Text(
@@ -471,7 +510,9 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
         decoration: BoxDecoration(
           color: AppColors.error,
-          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(
+            bottom: Radius.circular(24),
+          ),
           boxShadow: [
             BoxShadow(
               color: AppColors.error.withValues(alpha: 0.35),
@@ -489,7 +530,11 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
                 color: Colors.white.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.warning_rounded, color: Colors.white, size: 28),
+              child: const Icon(
+                Icons.warning_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(

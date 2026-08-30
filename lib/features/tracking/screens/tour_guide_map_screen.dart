@@ -692,7 +692,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       clipBehavior: Clip.hardEdge,
       child: SizedBox(
-        width: double.infinity,
+        width: MediaQuery.of(ctx).size.width,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
