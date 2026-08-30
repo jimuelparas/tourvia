@@ -34,10 +34,10 @@ jobs:
           echo "storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" > android/key.properties
           echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/key.properties
           echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/key.properties
-          echo "storeFile=../upload-keystore.jks" >> android/key.properties
+          echo "storeFile=upload-keystore.jks" >> android/key.properties
 
       - name: Decode Android Keystore
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
 
       - name: Get dependencies
         run: flutter pub get
@@ -68,23 +68,17 @@ jobs:
       - name: Create .env file
         run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
 
-      - name: Install Apple Certificate
-        uses: apple-actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
-          p12-password: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-
-      - name: Install Provisioning Profile
-        run: |
-          PP_PATH=$HOME/Library/MobileDevice/Provisioning\ Profiles
-          mkdir -p "$PP_PATH"
-          echo "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > "$PP_PATH/tourvia.mobileprovision"
-
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build iOS (no codesign for testing)
-        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+      - name: Build iOS (no codesign)
+        run: |
+          flutter build ios --release --no-codesign
+          mkdir -p build/ios/ipa
+          cd build/ios/iphoneos
+          mkdir Payload
+          cp -R Runner.app Payload/
+          zip -r ../ipa/Runner.ipa Payload
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
