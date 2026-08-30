@@ -257,6 +257,30 @@ class AuthService {
     await user.updatePassword(newPassword);
   }
 
+  // ── Delete Account ───────────────────────────────────────
+
+  /// Permanently deletes the current user's account after re-authentication.
+  /// Removes the Firestore profile document and then the Firebase Auth user.
+  static Future<void> deleteAccount({required String password}) async {
+    final user = _auth.currentUser;
+    if (user == null || user.email == null) {
+      throw AuthException('account-not-found');
+    }
+
+    // Re-authenticate to confirm identity
+    final credential = EmailAuthProvider.credential(
+      email: user.email!,
+      password: password,
+    );
+    await user.reauthenticateWithCredential(credential);
+
+    // Delete Firestore profile
+    await _db.collection('users').doc(user.uid).delete();
+
+    // Delete Firebase Auth account
+    await user.delete();
+  }
+
   // ── Sign Out ─────────────────────────────────────────────
 
   static Future<void> signOut() async {
