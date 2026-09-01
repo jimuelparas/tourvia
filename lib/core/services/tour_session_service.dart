@@ -148,6 +148,30 @@ class TourSessionService {
     }
   }
 
+  // ── Reset / Start New Tour ──────────────────────────────────
+
+  /// Fully resets an ended tour session so the guide can start fresh.
+  /// Deletes the old session document (and its itinerary sub-collection),
+  /// then creates a brand-new active session.
+  static Future<void> resetSession(String sessionId) async {
+    final sessionDoc = _db.collection('tour_sessions').doc(sessionId);
+
+    // Delete itinerary stops
+    await _deleteCollection(sessionDoc.collection('stops'));
+
+    // Delete the old session document
+    await sessionDoc.delete();
+
+    // Create a fresh active session
+    await sessionDoc.set({
+      'tourName': 'Unnamed Tour',
+      'totalDays': 3,
+      'currentDay': 1,
+      'status': 'active',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   /// Helper: deletes all documents in a Firestore collection.
   /// Uses batched writes (max 500 per batch) for efficiency.
   static Future<void> _deleteCollection(

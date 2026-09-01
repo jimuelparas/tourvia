@@ -310,6 +310,34 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                         ),
                       ),
                     ],
+                    // Start New Tour button — only visible when tour is ended
+                    if (isEnded) ...[
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _startNewTour(),
+                          icon: const Icon(Icons.play_circle_rounded,
+                              size: 18),
+                          label: const Text('Start New Tour'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                Colors.white.withValues(alpha: 0.25),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(
+                                color:
+                                    Colors.white.withValues(alpha: 0.4),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -506,6 +534,146 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
         ),
       );
     }
+  }
+
+  Future<void> _startNewTour() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.play_circle_rounded,
+                  color: AppColors.primary, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('Start New Tour?'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This will reset everything and create a fresh tour:',
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _newTourBullet('Delete previous itinerary stops'),
+            _newTourBullet('Generate a new access code'),
+            _newTourBullet('Clear all previous data'),
+            _newTourBullet('Set tour status to Active'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.play_arrow_rounded, size: 18),
+            label: const Text('Start New Tour'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      await TourSessionService.resetSession(_sessionId);
+
+      // Re-register guide info on the new session
+      final guide = AuthService.currentUser;
+      if (guide != null) {
+        await TourSessionService.updateGuideInfo(
+          _sessionId,
+          guide.uid,
+          guide.displayName ?? 'Guide',
+        );
+      }
+
+      if (!mounted) return;
+      Navigator.pop(context); // dismiss loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: const [
+              Icon(Icons.check_circle_rounded,
+                  color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('New tour started! Set up your itinerary.'),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // dismiss loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to start new tour: $e'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
+  }
+
+  Widget _newTourBullet(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 5),
+            child: Icon(Icons.check_circle_rounded, size: 14, color: AppColors.primary),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style: const TextStyle(
+                    fontSize: 13, color: AppColors.textSecondary)),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _endTourBullet(String text) {

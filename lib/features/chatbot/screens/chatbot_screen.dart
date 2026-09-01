@@ -25,17 +25,8 @@ class _ChatbotScreenState extends State<ChatbotScreen>
   late final AnimationController _fadeController;
   late final Animation<double> _fadeAnimation;
 
-  final List<ChatMessage> _messages = [
-    ChatMessage(
-      id: 'bot0',
-      senderId: 'ai_bot',
-      senderName: 'Tourvia AI',
-      text:
-          'Hello! 👋 I\'m your Tourvia Assistant powered by AI. Ask me anything about Philippine tourist spots!',
-      timestamp: DateTime.now(),
-      isGuide: true,
-    ),
-  ];
+  List<ChatMessage> _messages = [];
+  bool _isLoadingHistory = true;
 
   final List<String> _quickPrompts = [
     '🏰 Intramuros',
@@ -59,6 +50,17 @@ class _ChatbotScreenState extends State<ChatbotScreen>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+    _loadChatHistory();
+  }
+
+  Future<void> _loadChatHistory() async {
+    final history = await ChatbotService.loadHistory();
+    if (!mounted) return;
+    setState(() {
+      _messages = history;
+      _isLoadingHistory = false;
+    });
+    _scrollToBottom();
   }
 
   @override
@@ -71,40 +73,44 @@ class _ChatbotScreenState extends State<ChatbotScreen>
 
   Future<void> _sendMessage([String? text]) async {
     final userText = (text ?? _textController.text).trim();
-    if (userText.isEmpty || _isTyping) return;
+    if (userText.isEmpty || _isTyping || _isLoadingHistory) return;
+
+    final userMsg = ChatMessage(
+      id: 'user_${DateTime.now().millisecondsSinceEpoch}',
+      senderId: 'current_user',
+      senderName: 'You',
+      text: userText,
+      timestamp: DateTime.now(),
+    );
 
     setState(() {
-      _messages.add(
-        ChatMessage(
-          id: 'user_${DateTime.now().millisecondsSinceEpoch}',
-          senderId: 'current_user',
-          senderName: 'You',
-          text: userText,
-          timestamp: DateTime.now(),
-        ),
-      );
+      _messages.add(userMsg);
       _textController.clear();
       _isTyping = true;
     });
 
+    await ChatbotService.saveHistory();
     _scrollToBottom();
 
     try {
       final reply = await ChatbotService.ask(userText);
       if (!mounted) return;
+      
+      final botMsg = ChatMessage(
+        id: 'bot_${DateTime.now().millisecondsSinceEpoch}',
+        senderId: 'ai_bot',
+        senderName: 'Tourvia AI',
+        text: reply,
+        timestamp: DateTime.now(),
+        isGuide: true,
+      );
+
       setState(() {
         _isTyping = false;
-        _messages.add(
-          ChatMessage(
-            id: 'bot_${DateTime.now().millisecondsSinceEpoch}',
-            senderId: 'ai_bot',
-            senderName: 'Tourvia AI',
-            text: reply,
-            timestamp: DateTime.now(),
-            isGuide: true,
-          ),
-        );
+        _messages.add(botMsg);
       });
+
+      await ChatbotService.saveHistory();
     } catch (e) {
       if (!mounted) return;
       final rawError = e.toString().replaceFirst('Exception: ', '').trim();
@@ -186,30 +192,75 @@ class _ChatbotScreenState extends State<ChatbotScreen>
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep_rounded),
+            tooltip: 'Clear Chat',
+            onPressed: _isTyping || _isLoadingHistory
+                ? null
+                : () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Clear Chat'),
+                        content: const Text(
+                            'Are you sure you want to clear your chat history with Tourvia AI?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text(
+                              'Clear',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (confirm == true) {
+                      await ChatbotService.clearHistory();
+                      if (!mounted) return;
+                      setState(() {
+                        _messages = ChatbotService.messages;
+                      });
+                    }
+                  },
+          ),
+        ],
       ),
       body: FadeTransition(
         opacity: _fadeAnimation,
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(16),
-                itemCount: _messages.length + (_isTyping ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index == _messages.length && _isTyping) {
-                    return _buildTypingIndicator();
-                  }
-                  final message = _messages[index];
-                  final isMe = message.senderId == 'current_user';
-                  return _buildMessageBubble(message, isMe);
-                },
+        child: _isLoadingHistory
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.accentTeal,
+                ),
+              )
+            : Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _messages.length + (_isTyping ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index == _messages.length && _isTyping) {
+                          return _buildTypingIndicator();
+                        }
+                        final message = _messages[index];
+                        final isMe = message.senderId == 'current_user';
+                        return _buildMessageBubble(message, isMe);
+                      },
+                    ),
+                  ),
+                  _buildQuickPrompts(),
+                  _buildInputArea(),
+                ],
               ),
-            ),
-            _buildQuickPrompts(),
-            _buildInputArea(),
-          ],
-        ),
       ),
     );
   }
@@ -435,11 +486,13 @@ class _ChatbotScreenState extends State<ChatbotScreen>
             Expanded(
               child: TextField(
                 controller: _textController,
-                enabled: !_isTyping,
+                enabled: !_isTyping && !_isLoadingHistory,
                 decoration: InputDecoration(
-                  hintText: _isTyping
-                      ? 'AI is thinking...'
-                      : 'Ask about PH destinations...',
+                  hintText: _isLoadingHistory
+                      ? 'Loading history...'
+                      : (_isTyping
+                          ? 'AI is thinking...'
+                          : 'Ask about PH destinations...'),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide.none,
@@ -455,7 +508,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
             const SizedBox(width: 8),
             Container(
               decoration: BoxDecoration(
-                color: _isTyping
+                color: _isTyping || _isLoadingHistory
                     ? AppColors.textHint
                     : AppColors.accentTeal,
                 shape: BoxShape.circle,
@@ -472,7 +525,7 @@ class _ChatbotScreenState extends State<ChatbotScreen>
                       )
                     : const Icon(Icons.send_rounded,
                         color: Colors.white, size: 20),
-                onPressed: _isTyping ? null : () => _sendMessage(),
+                onPressed: _isTyping || _isLoadingHistory ? null : () => _sendMessage(),
               ),
             ),
           ],

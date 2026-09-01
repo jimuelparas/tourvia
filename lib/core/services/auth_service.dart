@@ -18,8 +18,7 @@ class AuthService {
   // ── Registration (US-01) ─────────────────────────────────
 
   /// Registers a new tour guide with Firebase Auth + Firestore profile.
-  /// Account is saved with [status] — defaults to 'pending' (admin approval needed).
-  /// If AI verification passes, status can be set to 'approved' for auto-activation.
+  /// Account is saved with [status] — defaults to 'approved' (no admin approval needed).
   static Future<void> registerTourGuide({
     required String firstName,
     required String lastName,
@@ -31,7 +30,7 @@ class AuthService {
     String tourGuideId = '',
     required String username,
     required String password,
-    String status = 'pending',
+    String status = 'approved',
     String? idPhotoUrl,
   }) async {
     // Build a display-friendly full name
@@ -74,10 +73,8 @@ class AuthService {
 
     await _db.collection('users').doc(uid).set(profileData);
 
-    // 4. Sign out immediately if pending — approved users can stay signed in
-    if (status != 'approved') {
-      await _auth.signOut();
-    }
+    // Sign out so the user goes through the login flow
+    await _auth.signOut();
   }
 
   // ── Login (US-02) ────────────────────────────────────────
@@ -138,19 +135,15 @@ class AuthService {
         throw AuthException('account-not-found');
       }
 
-      final status = doc.data()?['status'] as String? ?? 'pending';
-
-      if (status == 'pending') {
-        await _auth.signOut();
-        throw AuthException('account-pending');
-      }
+      // Status check — only block rejected accounts
+      final status = doc.data()?['status'] as String? ?? 'approved';
 
       if (status == 'rejected') {
         await _auth.signOut();
         throw AuthException('account-rejected');
       }
 
-      // status == 'approved' → login successful
+      // status is 'approved' or any other value → login successful
     } on FirebaseAuthException catch (e) {
       throw AuthException(e.code);
     }

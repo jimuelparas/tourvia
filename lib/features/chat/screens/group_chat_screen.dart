@@ -186,6 +186,75 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     );
   }
 
+  // ── Delete message ────────────────────────────────────────────────────────
+
+  Future<void> _confirmDeleteMessage(ChatMessage message) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Message'),
+        content: Text(
+          message.isMedia
+              ? 'Delete this photo and message? This cannot be undone.'
+              : 'Delete this message? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      try {
+        await ChatService.deleteMessage(
+          sessionId: widget.sessionId,
+          messageId: message.id,
+          mediaUrl: message.mediaUrl,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Colors.white),
+                  SizedBox(width: 10),
+                  Text('Message deleted'),
+                ],
+              ),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to delete: $e'),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
+      }
+    }
+  }
+
   // ── Scroll ────────────────────────────────────────────────────────────────
 
   void _scrollToBottom() {
@@ -391,136 +460,139 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   // ── Message bubble ────────────────────────────────────────────────────────
 
   Widget _buildMessageBubble(ChatMessage message, bool isMe) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!isMe) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: message.isGuide
-                  ? AppColors.primary
-                  : AppColors.primarySurface,
-              child: Text(
-                message.senderName[0],
-                style: TextStyle(
-                  color: message.isGuide ? Colors.white : AppColors.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+    return GestureDetector(
+      onLongPress: isMe ? () => _confirmDeleteMessage(message) : null,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Row(
+          mainAxisAlignment:
+              isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (!isMe) ...[
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: message.isGuide
+                    ? AppColors.primary
+                    : AppColors.primarySurface,
+                child: Text(
+                  message.senderName[0],
+                  style: TextStyle(
+                    color: message.isGuide ? Colors.white : AppColors.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isMe ? AppColors.primary : AppColors.surface,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isMe ? 16 : 0),
-                  bottomRight: Radius.circular(isMe ? 0 : 16),
+              const SizedBox(width: 8),
+            ],
+            Flexible(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isMe ? AppColors.primary : AppColors.surface,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(16),
+                    topRight: const Radius.circular(16),
+                    bottomLeft: Radius.circular(isMe ? 16 : 0),
+                    bottomRight: Radius.circular(isMe ? 0 : 16),
+                  ),
+                  border: Border.all(
+                    color: isMe ? Colors.transparent : AppColors.border,
+                  ),
                 ),
-                border: Border.all(
-                  color: isMe ? Colors.transparent : AppColors.border,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!isMe)
-                    Text(
-                      message.isGuide
-                          ? '${message.senderName} (Guide)'
-                          : message.senderName,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: message.isGuide
-                            ? AppColors.primary
-                            : AppColors.textPrimary,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!isMe)
+                      Text(
+                        message.isGuide
+                            ? '${message.senderName} (Guide)'
+                            : message.senderName,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: message.isGuide
+                              ? AppColors.primary
+                              : AppColors.textPrimary,
+                        ),
                       ),
-                    ),
-                  if (!isMe) const SizedBox(height: 4),
+                    if (!isMe) const SizedBox(height: 4),
 
-                  // Media image
-                  if (message.isMedia && message.mediaUrl != null) ...[
-                    GestureDetector(
-                      onTap: () => _openImageViewer(message.mediaUrl!),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final imgWidth = MediaQuery.of(context).size.width * 0.58;
-                            return Image.network(
-                              message.mediaUrl!,
-                              height: 180,
-                              width: imgWidth,
-                              fit: BoxFit.cover,
-                              loadingBuilder: (ctx, child, progress) {
-                                if (progress == null) return child;
-                                return Container(
-                                  height: 180,
-                                  width: imgWidth,
-                                  alignment: Alignment.center,
-                                  color: AppColors.surfaceVariant,
-                                  child: CircularProgressIndicator(
-                                    value: progress.expectedTotalBytes != null
-                                        ? progress.cumulativeBytesLoaded /
-                                            progress.expectedTotalBytes!
-                                        : null,
-                                  ),
-                                );
-                              },
-                              errorBuilder: (_, __, ___) => Container(
+                    // Media image
+                    if (message.isMedia && message.mediaUrl != null) ...[
+                      GestureDetector(
+                        onTap: () => _openImageViewer(message.mediaUrl!),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final imgWidth = MediaQuery.of(context).size.width * 0.58;
+                              return Image.network(
+                                message.mediaUrl!,
                                 height: 180,
                                 width: imgWidth,
-                                color: AppColors.surfaceVariant,
-                                alignment: Alignment.center,
-                                child: const Icon(Icons.broken_image_rounded,
-                                    color: AppColors.textHint),
-                              ),
-                            );
-                          },
+                                fit: BoxFit.cover,
+                                loadingBuilder: (ctx, child, progress) {
+                                  if (progress == null) return child;
+                                  return Container(
+                                    height: 180,
+                                    width: imgWidth,
+                                    alignment: Alignment.center,
+                                    color: AppColors.surfaceVariant,
+                                    child: CircularProgressIndicator(
+                                      value: progress.expectedTotalBytes != null
+                                          ? progress.cumulativeBytesLoaded /
+                                              progress.expectedTotalBytes!
+                                          : null,
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (_, __, ___) => Container(
+                                  height: 180,
+                                  width: imgWidth,
+                                  color: AppColors.surfaceVariant,
+                                  alignment: Alignment.center,
+                                  child: const Icon(Icons.broken_image_rounded,
+                                      color: AppColors.textHint),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+
+                    // Caption text
+                    if (message.text.isNotEmpty)
+                      Text(
+                        message.text,
+                        style: TextStyle(
+                          color: isMe ? Colors.white : AppColors.textPrimary,
+                        ),
+                      ),
+
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Text(
+                        '${message.timestamp.hour}:${message.timestamp.minute.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isMe
+                              ? Colors.white.withValues(alpha: 0.7)
+                              : AppColors.textHint,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 4),
                   ],
-
-                  // Caption text
-                  if (message.text.isNotEmpty)
-                    Text(
-                      message.text,
-                      style: TextStyle(
-                        color: isMe ? Colors.white : AppColors.textPrimary,
-                      ),
-                    ),
-
-                  const SizedBox(height: 4),
-                  Align(
-                    alignment: Alignment.bottomRight,
-                    child: Text(
-                      '${message.timestamp.hour}:${message.timestamp.minute.toString().padLeft(2, '0')}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isMe
-                            ? Colors.white.withValues(alpha: 0.7)
-                            : AppColors.textHint,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-          if (isMe) const SizedBox(width: 24),
-        ],
+            if (isMe) const SizedBox(width: 24),
+          ],
+        ),
       ),
     );
   }

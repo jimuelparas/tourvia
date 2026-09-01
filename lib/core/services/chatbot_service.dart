@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/app_config.dart';
 import 'package:http/http.dart' as http;
+import '../../features/chat/models/chat_message.dart';
 
 /// Service that connects to Google Gemini (Step 11 / US-21).
 ///
@@ -32,7 +34,92 @@ RESPONSE FORMATTING (Gemini Design Style):
 - Respond in the language of the user (Filipino, English, or Taglish).
 ''';
 
-  /// Sends [userMessage] to Gemini REST API and returns the assistant's reply.
+  static const String _historyKey = 'tourvia_chatbot_history';
+  static final List<ChatMessage> _messages = [];
+
+  /// Get the current chatbot message list
+  static List<ChatMessage> get messages => _messages;
+
+  /// Loads chatbot history from SharedPreferences.
+  /// If empty, initializes with default greeting.
+  static Future<List<ChatMessage>> loadHistory() async {
+    if (_messages.isNotEmpty) {
+      return _messages;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getString(_historyKey);
+      if (historyJson != null) {
+        final decoded = jsonDecode(historyJson) as List<dynamic>;
+        _messages.clear();
+        for (final item in decoded) {
+          final map = item as Map<String, dynamic>;
+          _messages.add(ChatMessage(
+            id: map['id'] as String? ?? 'msg_${DateTime.now().millisecondsSinceEpoch}',
+            senderId: map['senderId'] as String? ?? 'ai_bot',
+            senderName: map['senderName'] as String? ?? 'Tourvia AI',
+            text: map['text'] as String? ?? '',
+            timestamp: DateTime.parse(map['timestamp'] as String? ?? DateTime.now().toIso8601String()),
+            isGuide: map['isGuide'] as bool? ?? true,
+            isMedia: map['isMedia'] as bool? ?? false,
+            mediaUrl: map['mediaUrl'] as String?,
+          ));
+        }
+      }
+    } catch (e) {
+      // Fallback: list remains empty or retains partial load
+    }
+
+    if (_messages.isEmpty) {
+      _messages.add(ChatMessage(
+        id: 'bot0',
+        senderId: 'ai_bot',
+        senderName: 'Tourvia AI',
+        text: "Hello! 👋 I'm your Tourvia Assistant powered by AI. Ask me anything about Philippine tourist spots!",
+        timestamp: DateTime.now(),
+        isGuide: true,
+      ));
+    }
+
+    return _messages;
+  }
+
+  /// Saves the current list of chatbot messages to SharedPreferences.
+  static Future<void> saveHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _messages.map((msg) => {
+        'id': msg.id,
+        'senderId': msg.senderId,
+        'senderName': msg.senderName,
+        'text': msg.text,
+        'timestamp': msg.timestamp.toIso8601String(),
+        'isGuide': msg.isGuide,
+        'isMedia': msg.isMedia,
+        'mediaUrl': msg.mediaUrl,
+      }).toList();
+      await prefs.setString(_historyKey, jsonEncode(list));
+    } catch (e) {
+      // Silent error
+    }
+  }
+
+  /// Clears the chatbot history from both memory and SharedPreferences.
+  static Future<void> clearHistory() async {
+    _messages.clear();
+    _messages.add(ChatMessage(
+      id: 'bot0',
+      senderId: 'ai_bot',
+      senderName: 'Tourvia AI',
+      text: "Hello! 👋 I'm your Tourvia Assistant powered by AI. Ask me anything about Philippine tourist spots!",
+      timestamp: DateTime.now(),
+      isGuide: true,
+    ));
+    await saveHistory();
+  }
+
+  /// Sends [userMessage] along with the conversation history to Gemini REST API and returns the assistant's reply.
   static Future<String> ask(String userMessage) async {
     final apiKey = AppConfig.geminiApiKey;
     if (apiKey == null || apiKey.isEmpty) {
@@ -42,19 +129,62 @@ RESPONSE FORMATTING (Gemini Design Style):
     final candidateModels = [
       'gemini-3.6-flash',
       'gemini-2.5-flash',
-      'gemini-flash-latest',
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
     ];
 
+    // Build the contents array from chat history for conversation context (max 20 messages)
+    final contents = <Map<String, dynamic>>[];
+    
+    // Filter out error messages
+    final validHistory = _messages.where((msg) => !msg.id.startsWith('err_')).toList();
+    
+    // Build alternating user/model turns starting from the end
+    final List<ChatMessage> alternatingMessages = [];
+    String? lastRole;
+    
+    for (int i = validHistory.length - 1; i >= 0; i--) {
+      final msg = validHistory[i];
+      final role = (msg.senderId == 'current_user') ? 'user' : 'model';
+      
+      if (role == lastRole) {
+        continue;
+      }
+      
+      alternatingMessages.insert(0, msg);
+      lastRole = role;
+      
+      if (alternatingMessages.length >= 20) {
+        break;
+      }
+    }
+
+    // Ensure the list starts with a user message as required by Gemini API
+    while (alternatingMessages.isNotEmpty && alternatingMessages.first.senderId != 'current_user') {
+      alternatingMessages.removeAt(0);
+    }
+
+    // Map to API format
+    for (final msg in alternatingMessages) {
+      final role = (msg.senderId == 'current_user') ? 'user' : 'model';
+      contents.add({
+        'role': role,
+        'parts': [
+          {'text': msg.text}
+        ]
+      });
+    }
+
+    // Fallback if empty to ensure we at least send the user message
+    if (contents.isEmpty) {
+      contents.add({
+        'role': 'user',
+        'parts': [
+          {'text': userMessage}
+        ]
+      });
+    }
+
     final body = jsonEncode({
-      'contents': [
-        {
-          'parts': [
-            {'text': userMessage}
-          ]
-        }
-      ],
+      'contents': contents,
       'systemInstruction': {
         'parts': [
           {'text': _systemPrompt}

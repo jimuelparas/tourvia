@@ -62,12 +62,12 @@ class AppStrings {
   static const String passwordsDoNotMatch = 'Passwords do not match';
 
   // ── Registration Success ────────────────────────────────
-  static const String successTitle = 'Registration Submitted!';
+  static const String successTitle = 'Registration Complete!';
   static const String successSubtitle =
-      'Your account is now pending review.\nYou will be notified once it is approved.';
+      'Your account has been created successfully.\nYou can now log in with your credentials.';
   static const String successNote =
-      'Our team will verify your tour guide credentials. '
-      'This usually takes 1–2 business days.';
+      'Use the username and password you just created '
+      'to sign in and start managing your tours.';
   static const String backToLogin = 'Back to Login';
 
   // ── Login ──────────────────────────────────────────────

@@ -40,6 +40,28 @@ class ChatService {
     });
   }
 
+  /// Deletes a message from the group chat.
+  /// If the message contains a media URL hosted on Firebase Storage,
+  /// the corresponding file is also deleted.
+  static Future<void> deleteMessage({
+    required String sessionId,
+    required String messageId,
+    String? mediaUrl,
+  }) async {
+    // Delete the Firestore document
+    await _chatCol(sessionId).doc(messageId).delete();
+
+    // Delete the media file from Storage if present
+    if (mediaUrl != null && mediaUrl.isNotEmpty) {
+      try {
+        final ref = _storage.refFromURL(mediaUrl);
+        await ref.delete();
+      } catch (_) {
+        // Silently ignore if file doesn't exist or URL is not a Storage URL
+      }
+    }
+  }
+
   /// Uploads [xFile] to Firebase Storage under `/chat/{sessionId}/{filename}`.
   ///
   /// Ensures the user is anonymously authenticated before uploading so that

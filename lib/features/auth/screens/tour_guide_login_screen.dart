@@ -15,7 +15,7 @@ import 'tour_guide_registration_screen.dart';
 ///
 /// Collects username and password. Provides:
 /// - Inline validation (required fields).
-/// - Status-aware error banners for pending / rejected accounts.
+/// - Status-aware error banners for rejected accounts.
 /// - 5-attempt rate-limiting with 15-minute temporary lockout.
 /// - Navigation to the registration and forgot-password flows.
 class TourGuideLoginScreen extends StatefulWidget {
@@ -306,20 +306,11 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
 
   Widget _buildErrorBanner() {
     // Determine icon and colour based on message type
-    final bool isPending = _loginError == AppStrings.accountPending;
     final bool isRejected = _loginError == AppStrings.accountRejected;
 
-    final Color bannerColor = isPending
-        ? AppColors.warning
-        : isRejected
-        ? AppColors.error
-        : AppColors.error;
-    final Color bannerBg = isPending
-        ? AppColors.warning.withValues(alpha: 0.12)
-        : AppColors.error.withValues(alpha: 0.12);
-    final IconData bannerIcon = isPending
-        ? Icons.hourglass_top_rounded
-        : isRejected
+    final Color bannerColor = AppColors.error;
+    final Color bannerBg = AppColors.error.withValues(alpha: 0.12);
+    final IconData bannerIcon = isRejected
         ? Icons.block_rounded
         : Icons.error_outline_rounded;
 

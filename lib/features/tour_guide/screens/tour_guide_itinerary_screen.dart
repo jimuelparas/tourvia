@@ -50,7 +50,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Delete Stop?'),
-        content: Text('Remove "\${stop.destinationName}" from the itinerary?'),
+        content: Text('Remove "${stop.destinationName}" from the itinerary?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -511,6 +511,13 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                               IconButton(
                                 icon: const Icon(Icons.edit_rounded, size: 18),
                                 onPressed: () => _navigateToAddEdit(item: stop),
+                              ),
+
+                              // Delete button — removes stop with confirmation dialog
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.error),
+                                onPressed: isDeleting ? null : () => _deleteStop(stop),
+                                tooltip: 'Delete Stop',
                               ),
 
                               // "Done" button — only shown when stop is not yet completed

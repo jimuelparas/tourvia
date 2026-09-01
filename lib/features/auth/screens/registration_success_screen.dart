@@ -6,10 +6,10 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
 import 'tour_guide_login_screen.dart';
 
-/// Shown after a tour guide submits their registration form.
+/// Shown after a tour guide completes their registration.
 ///
-/// Displays a pending-review status message and notifies the user
-/// that they will be contacted once the account is approved.
+/// Displays a success message confirming the account is ready
+/// and prompts the user to go back to the login screen.
 class RegistrationSuccessScreen extends StatefulWidget {
   const RegistrationSuccessScreen({super.key});
 
