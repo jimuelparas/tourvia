@@ -50,6 +50,4 @@ app.*.map.json
 assets/env/.env
 assets/env/.env.*
 **/google-services.json
-**/GoogleService-Info.plist
-**/firebase_options.dart
 scratch_*.txt

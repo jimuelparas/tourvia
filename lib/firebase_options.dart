@@ -66,7 +66,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '723690444111',
     projectId: 'tourvia-8fa8c',
     storageBucket: 'tourvia-8fa8c.firebasestorage.app',
-    iosBundleId: 'com.example.tourvia',
+    iosBundleId: 'com.tourvia.app',
   );
   static const FirebaseOptions windows = FirebaseOptions(
     apiKey: 'AIzaSyAuDyBrFQ4F4qlLL3lzN8s6_pegW_rCwxE',

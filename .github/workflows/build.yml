@@ -27,7 +27,9 @@ jobs:
           cache: true
 
       - name: Create .env file
-        run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+        run: |
+          mkdir -p assets/env
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > assets/env/.env
 
       - name: Create key.properties
         run: |
@@ -52,6 +54,9 @@ jobs:
           path: build/app/outputs/bundle/release/app-release.aab
 
   # ─── iOS IPA Build ──────────────────────────────────────────
+  # NOTE: This builds an unsigned IPA for archival purposes.
+  # For TestFlight / App Store, build and upload from Xcode on
+  # your Mac using: Product → Archive → Distribute App.
   build-ios:
     name: Build iOS IPA
     runs-on: macos-latest
@@ -66,7 +71,12 @@ jobs:
           cache: true
 
       - name: Create .env file
-        run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+        run: |
+          mkdir -p assets/env
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > assets/env/.env
+
+      - name: Decode GoogleService-Info.plist
+        run: echo "${{ secrets.IOS_GOOGLE_SERVICE_INFO_BASE64 }}" | base64 --decode > ios/Runner/GoogleService-Info.plist
 
       - name: Get dependencies
         run: flutter pub get

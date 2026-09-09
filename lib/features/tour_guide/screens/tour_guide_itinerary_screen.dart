@@ -3,12 +3,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
-import '../../../core/constants/app_strings.dart';
 import '../../../core/services/itinerary_service.dart';
 import '../../../core/services/tour_session_service.dart';
 import '../../../core/services/weather_service.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/utils/navigation_utils.dart';
 import '../../itinerary/models/itinerary_item.dart';
 import '../../weather/screens/weather_screen.dart';
 import 'add_edit_itinerary_screen.dart';

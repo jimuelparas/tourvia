@@ -452,41 +452,48 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   }) {
     return Marker(
       point: point,
-      width: 90,
+      width: 100,
       height: 74,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: selected ? color : Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: color, width: selected ? 2 : 1),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
+      child: SizedBox(
+        width: 100,
+        height: 74,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                constraints: const BoxConstraints(maxWidth: 96),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: selected ? color : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: color, width: selected ? 2 : 1),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: selected ? Colors.white : AppColors.textPrimary,
                   ),
-                ],
-              ),
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.bold,
-                  color: selected ? Colors.white : AppColors.textPrimary,
                 ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Icon(icon, color: color, size: selected ? 42 : 36),
-          ],
+              const SizedBox(height: 2),
+              Icon(icon, color: color, size: selected ? 42 : 36),
+            ],
+          ),
         ),
       ),
     );

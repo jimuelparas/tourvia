@@ -36,19 +36,46 @@ void main() async {
     debugPrint('Warning: .env file not found. AI features will be unavailable.');
   }
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Initialize Firebase with error handling to prevent white screen on iOS
+  bool firebaseReady = false;
+  String? firebaseError;
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    firebaseReady = true;
+  } catch (e, stack) {
+    firebaseError = e.toString();
+    debugPrint('FATAL: Firebase initialization failed: $e');
+    debugPrint('$stack');
+  }
 
-  // Initialize Firebase Cloud Messaging
-  await NotificationService.initialize();
+  // Initialize Firebase Cloud Messaging only if Firebase succeeded
+  if (firebaseReady) {
+    try {
+      await NotificationService.initialize();
+    } catch (e, stack) {
+      // Non-fatal — app continues without push notifications
+      debugPrint('Warning: FCM initialization failed: $e');
+      debugPrint('$stack');
+    }
+  }
 
-  runApp(const TourviaApp());
+  runApp(TourviaApp(
+    firebaseReady: firebaseReady,
+    firebaseError: firebaseError,
+  ));
 }
 
 class TourviaApp extends StatefulWidget {
-  const TourviaApp({super.key});
+  final bool firebaseReady;
+  final String? firebaseError;
+
+  const TourviaApp({
+    super.key,
+    required this.firebaseReady,
+    this.firebaseError,
+  });
 
   @override
   State<TourviaApp> createState() => _TourviaAppState();
@@ -58,7 +85,9 @@ class _TourviaAppState extends State<TourviaApp> {
   @override
   void initState() {
     super.initState();
-    _listenToNotificationTaps();
+    if (widget.firebaseReady) {
+      _listenToNotificationTaps();
+    }
   }
 
   /// Routes the user to the correct screen when they tap a push notification.
@@ -113,11 +142,104 @@ class _TourviaAppState extends State<TourviaApp> {
         }
         return null; // Let Flutter handle other routes normally
       },
-      home: const AuthGate(),
+      home: widget.firebaseReady
+          ? const AuthGate()
+          : _FirebaseErrorScreen(error: widget.firebaseError),
       builder: (context, child) {
         // Wrap the whole app in a foreground notification banner listener
-        return _FcmBannerWrapper(child: child!);
+        // only when Firebase is available
+        if (widget.firebaseReady) {
+          return _FcmBannerWrapper(child: child!);
+        }
+        return child!;
       },
+    );
+  }
+}
+
+/// Shows a user-friendly error screen when Firebase fails to initialize.
+/// Provides a retry mechanism so the user can restart the app.
+class _FirebaseErrorScreen extends StatelessWidget {
+  final String? error;
+  const _FirebaseErrorScreen({this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.cloud_off_rounded,
+                    size: 64, color: AppColors.error.withValues(alpha: 0.7)),
+                const SizedBox(height: 20),
+                const Text(
+                  'Unable to Connect',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'TourVia could not connect to the server.\n'
+                  'Please check your internet connection and try again.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.error.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Text(
+                      error!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.error.withValues(alpha: 0.8),
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 28),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    // Restart the app by re-running main
+                    main();
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 32, vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -141,10 +263,19 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _checkSessions() async {
     // Check for tourist session first
-    await TouristSessionManager.loadSession();
+    try {
+      await TouristSessionManager.loadSession();
+    } catch (e) {
+      debugPrint('Warning: Failed to load tourist session: $e');
+    }
+
     if (TouristSessionManager.isLoggedIn) {
       // Start SOS monitoring for the tourist session
-      SosNotificationService.instance.startFromCurrentSession();
+      try {
+        SosNotificationService.instance.startFromCurrentSession();
+      } catch (e) {
+        debugPrint('Warning: Failed to start SOS monitoring: $e');
+      }
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const TouristDashboardScreen()),
