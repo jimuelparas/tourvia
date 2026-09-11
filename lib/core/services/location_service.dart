@@ -173,6 +173,7 @@ class LocationService {
       // Reset command immediately in Firestore
       await _locCol(sessionId).doc(touristId).update({
         'ringCommand': false,
+        'ringCommandAt': null,
       });
     });
   }
