@@ -192,14 +192,16 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   Future<void> _navigateTo(UserLocation tourist) async {
     // Try geo: URI first (opens native maps app)
     final geoUri = Uri.parse(
-        'geo:${tourist.latitude},${tourist.longitude}'
-        '?q=${tourist.latitude},${tourist.longitude}');
+      'geo:${tourist.latitude},${tourist.longitude}'
+      '?q=${tourist.latitude},${tourist.longitude}',
+    );
     // Fallback: Google Maps directions link
     final mapsUri = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1'
-        '&origin=${_guidePosition.latitude},${_guidePosition.longitude}'
-        '&destination=${tourist.latitude},${tourist.longitude}'
-        '&travelmode=walking');
+      'https://www.google.com/maps/dir/?api=1'
+      '&origin=${_guidePosition.latitude},${_guidePosition.longitude}'
+      '&destination=${tourist.latitude},${tourist.longitude}'
+      '&travelmode=walking',
+    );
     try {
       if (await canLaunchUrl(geoUri)) {
         await launchUrl(geoUri);
@@ -573,82 +575,84 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
           ),
         ),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: (outside ? AppColors.error : AppColors.success)
-                    .withValues(alpha: 0.12),
-                child: Icon(
-                  outside ? Icons.warning_rounded : Icons.person_rounded,
-                  color: outside ? AppColors.error : AppColors.success,
-                  size: 20,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor:
+                      (outside ? AppColors.error : AppColors.success)
+                          .withValues(alpha: 0.12),
+                  child: Icon(
+                    outside ? Icons.warning_rounded : Icons.person_rounded,
+                    color: outside ? AppColors.error : AppColors.success,
+                    size: 20,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tourist.userName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: AppColors.textPrimary,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tourist.userName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    ),
-                    Text(
-                      outside
-                          ? '⚠ ${(dist / 1000).toStringAsFixed(2)} km — Outside boundary'
-                          : '✅ ${(dist / 1000).toStringAsFixed(2)} km — Safe',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: outside ? AppColors.error : AppColors.success,
-                        fontWeight: FontWeight.w600,
+                      Text(
+                        outside
+                            ? '⚠ ${(dist / 1000).toStringAsFixed(2)} km — Outside boundary'
+                            : '✅ ${(dist / 1000).toStringAsFixed(2)} km — Safe',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: outside ? AppColors.error : AppColors.success,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(
-                  Icons.close_rounded,
-                  color: AppColors.textHint,
-                  size: 20,
+                IconButton(
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: AppColors.textHint,
+                    size: 20,
+                  ),
+                  onPressed: () => setState(() => _selectedTourist = null),
                 ),
-                onPressed: () => setState(() => _selectedTourist = null),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _actionBtn(
-                  icon: Icons.ring_volume_rounded,
-                  label: 'Ring',
-                  color: AppColors.primary,
-                  onTap: () => _ringTourist(tourist),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _actionBtn(
+                    icon: Icons.ring_volume_rounded,
+                    label: 'Ring',
+                    color: AppColors.primary,
+                    onTap: () => _ringTourist(tourist),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _actionBtn(
-                  icon: Icons.navigation_rounded,
-                  label: 'Navigate',
-                  color: AppColors.accent,
-                  filled: true,
-                  onTap: () => _navigateTo(tourist),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _actionBtn(
+                    icon: Icons.navigation_rounded,
+                    label: 'Navigate',
+                    color: AppColors.accent,
+                    filled: true,
+                    onTap: () => _navigateTo(tourist),
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
-    ));
+    );
   }
 
   Widget _actionBtn({
@@ -690,187 +694,191 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   Widget _buildManagementPanel(BuildContext ctx, ScrollController scrollCtrl) {
     final sorted = _sortedTourists;
     final outsideCount = _tourists.where(_isOutside).length;
-    // ignore: avoid_print
-    print('PANEL BUILD: _tourists.length = ${_tourists.length}, sorted.length = ${sorted.length}');
 
     return Material(
       color: AppColors.surface,
       elevation: 16,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       clipBehavior: Clip.hardEdge,
-      child: SizedBox(
-        width: MediaQuery.of(ctx).size.width,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Drag handle
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-          ),
-
-          // Panel header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-            child: Row(
+      child: CustomScrollView(
+        controller: scrollCtrl,
+        slivers: [
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                // Drag handle
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.border,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Panel header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Row(
                     children: [
-                      const Text(
-                        'Tourist Management',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Tourist Management',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            Text(
+                              '${_tourists.length} total · $outsideCount outside',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: outsideCount > 0
+                                    ? AppColors.error
+                                    : AppColors.textHint,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      Text(
-                        '${_tourists.length} total · $outsideCount outside',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: outsideCount > 0
-                              ? AppColors.error
-                              : AppColors.textHint,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Ring All button
-                if (_tourists.isNotEmpty)
-                  ElevatedButton.icon(
-                    onPressed: _ringAllTourists,
-                    icon: const Icon(Icons.campaign_rounded, size: 16),
-                    label: const Text('Ring All'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.error,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // Filter & Sort bar
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                // Filter chip
-                FilterChip(
-                  label: const Text('Outside Only'),
-                  selected: _showOutsideOnly,
-                  onSelected: (v) => setState(() => _showOutsideOnly = v),
-                  selectedColor: AppColors.error.withValues(alpha: 0.15),
-                  checkmarkColor: AppColors.error,
-                  labelStyle: TextStyle(
-                    color: _showOutsideOnly
-                        ? AppColors.error
-                        : AppColors.textSecondary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                  side: BorderSide(
-                    color: _showOutsideOnly
-                        ? AppColors.error
-                        : AppColors.border,
-                  ),
-                ),
-                const Spacer(),
-                // Sort dropdown
-                DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _sortMode,
-                    isDense: true,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'name',
-                        child: Text('Sort: Name'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'distance',
-                        child: Text('Sort: Distance'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'status',
-                        child: Text('Sort: Status'),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _sortMode = v ?? 'name'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 8),
-          const Divider(height: 1),
-
-          // Tourist list
-          Expanded(
-            child: sorted.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          _showOutsideOnly
-                              ? Icons.check_circle_outline_rounded
-                              : Icons.people_outline_rounded,
-                          size: 48,
-                          color: AppColors.success.withValues(alpha: 0.6),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _showOutsideOnly
-                              ? 'All tourists are within the safe zone!'
-                              : 'No tourists have joined yet.',
-                          style: const TextStyle(
-                            color: AppColors.textHint,
-                            fontSize: 14,
+                      // Ring All button
+                      if (_tourists.isNotEmpty)
+                        ElevatedButton.icon(
+                          onPressed: _ringAllTourists,
+                          icon: const Icon(Icons.campaign_rounded, size: 16),
+                          label: const Text('Ring All'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.error,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
-                      ],
-                    ),
-                  )
-                : ListView.separated(
-                    controller: scrollCtrl,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    itemCount: sorted.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (ctx, i) => _buildTouristTile(sorted[i]),
+                    ],
                   ),
+                ),
+
+                // Filter & Sort bar
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      // Filter chip
+                      FilterChip(
+                        label: const Text('Outside Only'),
+                        selected: _showOutsideOnly,
+                        onSelected: (v) => setState(() => _showOutsideOnly = v),
+                        selectedColor: AppColors.error.withValues(alpha: 0.15),
+                        checkmarkColor: AppColors.error,
+                        labelStyle: TextStyle(
+                          color: _showOutsideOnly
+                              ? AppColors.error
+                              : AppColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                        side: BorderSide(
+                          color: _showOutsideOnly
+                              ? AppColors.error
+                              : AppColors.border,
+                        ),
+                      ),
+                      const Spacer(),
+                      // Sort dropdown
+                      DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _sortMode,
+                          isDense: true,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'name',
+                              child: Text('Sort: Name'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'distance',
+                              child: Text('Sort: Distance'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'status',
+                              child: Text('Sort: Status'),
+                            ),
+                          ],
+                          onChanged: (v) =>
+                              setState(() => _sortMode = v ?? 'name'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+                const Divider(height: 1),
+              ],
+            ),
           ),
+
+          // Tourist list
+          if (sorted.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _showOutsideOnly
+                          ? Icons.check_circle_outline_rounded
+                          : Icons.people_outline_rounded,
+                      size: 48,
+                      color: AppColors.success.withValues(alpha: 0.6),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _showOutsideOnly
+                          ? 'All tourists are within the safe zone!'
+                          : 'No tourists have joined yet.',
+                      style: const TextStyle(
+                        color: AppColors.textHint,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              sliver: SliverList.separated(
+                itemCount: sorted.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (ctx, i) => _buildTouristTile(sorted[i]),
+              ),
+            ),
         ],
       ),
-    ));
+    );
   }
 
   Widget _buildTouristTile(UserLocation tourist) {
@@ -1092,9 +1100,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   // ── Permission denied screen ────────────────────────────────
   Widget _buildPermissionScreen() {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(AppStrings.mapTitle),
-      ),
+      appBar: AppBar(title: const Text(AppStrings.mapTitle)),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
