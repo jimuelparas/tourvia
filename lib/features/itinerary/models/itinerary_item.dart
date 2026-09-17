@@ -71,7 +71,7 @@ class ItineraryItem {
     List<PassengerAttendance>? attendance,
   }) : attendance = attendance ?? [];
 
-  // ── Derived counts ──────────────────────────────────────
+  // ── Derived counts & Time-based Auto Status ────────────
   int get presentCount =>
       attendance.where((a) => a.status == AttendanceStatus.present).length;
   int get absentCount =>
@@ -79,6 +79,67 @@ class ItineraryItem {
   int get lateCount =>
       attendance.where((a) => a.status == AttendanceStatus.late).length;
   int get totalPassengers => attendance.length;
+
+  static int _parseTimeToMinutes(String timeStr) {
+    try {
+      final parts = timeStr.trim().split(' ');
+      final timeParts = parts[0].split(':');
+      int hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+      final isPm = parts.length > 1 && parts[1].toUpperCase() == 'PM';
+      final isAm = parts.length > 1 && parts[1].toUpperCase() == 'AM';
+      if (isPm && hour != 12) hour += 12;
+      if (isAm && hour == 12) hour = 0;
+      return hour * 60 + minute;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// True if the scheduled date/end-time has already elapsed.
+  bool get isPastSchedule {
+    final now = DateTime.now();
+    final stopDate = DateTime(date.year, date.month, date.day);
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (today.isBefore(stopDate)) return false;
+    if (today.isAfter(stopDate)) return true;
+
+    // Same day: check end time
+    final endMins = _parseTimeToMinutes(endTime);
+    if (endMins <= 0) return false;
+    final currentMins = now.hour * 60 + now.minute;
+    return currentMins >= endMins;
+  }
+
+  /// True if current clock time is within [startTime, endTime] on this date.
+  bool get isCurrentlyOngoing {
+    final now = DateTime.now();
+    final stopDate = DateTime(date.year, date.month, date.day);
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (today != stopDate) return false;
+
+    final startMins = _parseTimeToMinutes(startTime);
+    final endMins = _parseTimeToMinutes(endTime);
+    final currentMins = now.hour * 60 + now.minute;
+
+    return currentMins >= startMins && currentMins < endMins;
+  }
+
+  /// Automatically derives the current status (completed when time/date passes, ongoing when active).
+  ItineraryStatus get effectiveStatus {
+    if (status == ItineraryStatus.completed || status == ItineraryStatus.skipped) {
+      return status;
+    }
+    if (isPastSchedule) {
+      return ItineraryStatus.completed;
+    }
+    if (isCurrentlyOngoing) {
+      return ItineraryStatus.ongoing;
+    }
+    return ItineraryStatus.upcoming;
+  }
 
   ItineraryItem copyWith({
     String? id,

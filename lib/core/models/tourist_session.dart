@@ -17,6 +17,10 @@ class TouristSession {
   /// The Firestore code doc ID (used for updates)
   final String codeDocId;
 
+  /// Aliases for new tourId architecture
+  String get tourId => sessionId;
+  String get touristId => codeDocId;
+
   const TouristSession({
     required this.code,
     required this.touristName,

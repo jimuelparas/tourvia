@@ -196,7 +196,10 @@ class _TourGuideStopAttendanceScreenState
 
     return Scaffold(
       appBar: AppBar(
-        leading: const BackButton(),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: Text(widget.stop.destinationName,
             overflow: TextOverflow.ellipsis),
         iconTheme: const IconThemeData(color: AppColors.primary),

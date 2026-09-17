@@ -16,6 +16,7 @@ import 'features/auth/screens/in_app_password_reset_screen.dart';
 import 'features/tour_guide/screens/tour_guide_dashboard_screen.dart';
 import 'features/tourist/screens/tourist_dashboard_screen.dart';
 import 'features/sos/screens/sos_screen.dart';
+import 'features/chat/screens/group_chat_screen.dart';
 import 'firebase_options.dart';
 
 /// Global navigator key — used by NotificationService to route
@@ -111,7 +112,15 @@ class _TourviaAppState extends State<TourviaApp> {
           builder: (_) => SosScreen(sessionId: sessionId),
         ));
         break;
-      // Additional routes (chat, tracking) can be added here as needed.
+      case 'chat':
+        final isGuide = data['isGuide'] == 'true' || data['isGuide'] == true;
+        nav.push(MaterialPageRoute(
+          builder: (_) => GroupChatScreen(
+            isCurrentUserGuide: isGuide,
+            sessionId: sessionId,
+          ),
+        ));
+        break;
       default:
         break;
     }

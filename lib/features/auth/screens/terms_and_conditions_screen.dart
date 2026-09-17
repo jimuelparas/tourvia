@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_strings.dart';
+import '../../../core/models/tourist_session.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../tourist/screens/tourist_home_screen.dart';
 
 /// Terms and Conditions Acceptance Screen (US-05).
 ///
@@ -46,9 +49,48 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen>
   }
 
   void _onAccept() {
-    if (_hasAgreed && widget.onAccepted != null) {
-      widget.onAccepted!();
+    if (!_hasAgreed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Please check the box to agree to the Terms & Conditions.'),
+              ),
+            ],
+          ),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
     }
+
+    // Save token if session exists
+    final session = TouristSessionManager.current;
+    if (session != null) {
+      NotificationService.saveTokenForTourist(
+        session.sessionId,
+        session.codeDocId,
+      );
+    }
+
+    if (widget.onAccepted != null) {
+      try {
+        widget.onAccepted!();
+        return;
+      } catch (_) {}
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const TouristHomeScreen()),
+      (r) => false,
+    );
   }
 
   void _onDecline() {
@@ -156,48 +198,31 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Checkbox
-                      GestureDetector(
-                        onTap: () {
+                      // Checkbox ListTile (immune to double-tap conflict on web)
+                      CheckboxListTile(
+                        value: _hasAgreed,
+                        onChanged: (val) {
                           setState(() {
-                            _hasAgreed = !_hasAgreed;
+                            _hasAgreed = val ?? false;
                           });
                         },
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: Checkbox(
-                                value: _hasAgreed,
-                                onChanged: (val) {
-                                  setState(() {
-                                    _hasAgreed = val ?? false;
-                                  });
-                                },
-                                activeColor: AppColors.primary,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
+                        title: Text(
+                          AppStrings.agreeToTerms,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w500,
+                                color: _hasAgreed
+                                    ? AppColors.textPrimary
+                                    : AppColors.textSecondary,
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                AppStrings.agreeToTerms,
-                                style: Theme.of(context).textTheme.bodyMedium
-                                    ?.copyWith(
-                                      fontWeight: FontWeight.w500,
-                                      color: _hasAgreed
-                                          ? AppColors.textPrimary
-                                          : AppColors.textSecondary,
-                                    ),
-                              ),
-                            ),
-                          ],
+                        ),
+                        controlAffinity: ListTileControlAffinity.leading,
+                        contentPadding: EdgeInsets.zero,
+                        activeColor: AppColors.primary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
 
                       // Buttons
                       Row(
@@ -217,10 +242,12 @@ class _TermsAndConditionsScreenState extends State<TermsAndConditionsScreen>
                           Expanded(
                             flex: 2,
                             child: ElevatedButton(
-                              onPressed: _hasAgreed ? _onAccept : null,
+                              onPressed: _onAccept,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                disabledBackgroundColor: AppColors.surfaceVariant,
+                                backgroundColor: _hasAgreed
+                                    ? AppColors.primary
+                                    : AppColors.primary.withValues(alpha: 0.5),
+                                foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 16),
                                 elevation: _hasAgreed ? 2 : 0,
                               ),

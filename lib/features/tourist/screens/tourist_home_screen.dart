@@ -3,16 +3,18 @@ import 'package:flutter/material.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/sos_service.dart';
 import '../../../core/services/sos_notification_service.dart';
-
+import '../../../core/services/chat_badge_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/models/tour_model.dart';
 import '../../../core/models/tourist_session.dart';
-import '../../../core/services/tour_session_service.dart';
-import '../../../core/services/attendance_service.dart';
+import '../../../core/services/tour_service.dart';
+import '../../../core/services/location_service.dart';
+import '../../../core/widgets/tour_status_card.dart';
+import '../../../core/widgets/weather_panel.dart';
 import '../../tracking/screens/tourist_map_screen.dart';
 import 'tourist_itinerary_screen.dart';
 import '../../chat/screens/group_chat_screen.dart';
 import '../../settings/screens/settings_screen.dart';
-import '../../weather/screens/weather_screen.dart';
 import '../../sos/screens/sos_screen.dart';
 import '../../chatbot/screens/chatbot_screen.dart';
 
@@ -27,6 +29,7 @@ class TouristHomeScreen extends StatefulWidget {
 
 class _TouristHomeScreenState extends State<TouristHomeScreen> {
   StreamSubscription<List<SosAlert>>? _sosUiSubscription;
+  StreamSubscription? _publishLocationSub;
   List<SosAlert> _activeAlerts = [];
 
   @override
@@ -34,8 +37,11 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
     super.initState();
     // Start the app-level SOS notification service for this session
     _startSosService();
+    // Start background live location publishing for active tour (REV-005)
+    _startLocationSharing();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startSosService();
+      _startLocationSharing();
     });
   }
 
@@ -58,9 +64,26 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
     });
   }
 
+  Future<void> _startLocationSharing() async {
+    if (_publishLocationSub != null) return;
+    final session = TouristSessionManager.current;
+    if (session == null) return;
+
+    final hasPerm = await LocationService.checkAndRequestPermissions();
+    if (!hasPerm || !mounted) return;
+
+    _publishLocationSub = LocationService.startPublishingLocation(
+      sessionId: session.sessionId,
+      userId: session.codeDocId,
+      userName: session.touristName,
+      isGuide: false,
+    );
+  }
+
   @override
   void dispose() {
     _sosUiSubscription?.cancel();
+    _publishLocationSub?.cancel();
     // Note: do NOT stop ringing or the SOS service here.
     // Ringing is managed by SosNotificationService at the app level.
     super.dispose();
@@ -78,11 +101,13 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(),
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
               if (_activeAlerts.isNotEmpty) ...[
                 // SOS alert banner removed — alerts now handled via
                 // SosNotificationService with persistent ringing.
               ],
+              // Weather panel at top of dashboard
+              const WeatherPanel(),
               _buildMainActionCard(),
               const SizedBox(height: 32),
               const Text(
@@ -142,124 +167,25 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
   Widget _buildMainActionCard() {
     final sessionId = TouristSessionManager.current?.sessionId ?? '';
 
-    return StreamBuilder<TourSession>(
-      stream: TourSessionService.watchSession(sessionId),
-      builder: (context, sessionSnapshot) {
-        final session = sessionSnapshot.data;
-        final tourName = session?.tourName ?? 'Unnamed Tour';
-        final dayStr = session != null
-            ? 'Day ${session.currentDay} of ${session.totalDays}'
-            : 'Day 1 of 3';
+    return StreamBuilder<Tour?>(
+      stream: TourService.watchTour(sessionId),
+      builder: (context, snapshot) {
+        final tour = snapshot.data;
 
-        return StreamBuilder<List<TouristRecord>>(
-          stream: AttendanceService.watchRoster(sessionId),
-          builder: (context, rosterSnapshot) {
-            final touristCount = rosterSnapshot.data?.length ?? 0;
-            final countStr =
-                '$touristCount ${touristCount == 1 ? 'tourist' : 'tourists'}';
+        if (tour == null) {
+          return const SizedBox.shrink();
+        }
 
-            return GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const TouristItineraryScreen()),
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF2196F3).withValues(alpha: 0.2),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Current Tour',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Text(
-                            'Active',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      tourName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '$countStr • $dayStr',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
-                    ),
-                    if (session?.guideName != null && session!.guideName!.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: session.guideId != null
-                            ? () => _showGuideProfile(session.guideId!, session.guideName!)
-                            : null,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.person_pin_rounded, color: Colors.white70, size: 16),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Guide: ${session.guideName}',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            if (session.guideId != null) ...[
-                              const SizedBox(width: 4),
-                              const Icon(Icons.chevron_right_rounded, color: Colors.white70, size: 18),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            );
-          },
+        return TourStatusCard(
+          tour: tour,
+          isTourGuide: false,
+          onGuideProfileTap: tour.guideId.isNotEmpty
+              ? () => _showGuideProfile(tour.guideId, tour.guideName)
+              : null,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const TouristItineraryScreen()),
+          ),
         );
       },
     );
@@ -641,6 +567,9 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
   }
 
   Widget _buildGrid() {
+    final sessionId = TouristSessionManager.current?.sessionId ?? '';
+    final touristId = TouristSessionManager.current?.codeDocId ?? '';
+
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -649,6 +578,17 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
       mainAxisSpacing: 16,
       childAspectRatio: 0.95,
       children: [
+        // Itinerary module
+        _buildModuleCard(
+          title: 'Itinerary',
+          subtitle: 'Tour schedule',
+          iconAsset: 'assets/icons/manage_tour.png',
+          color: AppColors.primary,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const TouristItineraryScreen()),
+          ),
+        ),
         _buildModuleCard(
           title: 'Tracking',
           subtitle: 'Live location',
@@ -659,30 +599,39 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
             MaterialPageRoute(builder: (_) => const TouristMapScreen()),
           ),
         ),
-        _buildModuleCard(
-          title: 'Group Chat',
-          subtitle: 'Messages',
-          iconAsset: 'assets/icons/groupchat.png',
-          color: AppColors.accent,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => GroupChatScreen(
-                isCurrentUserGuide: false,
-                sessionId: TouristSessionManager.current?.sessionId ?? '',
-              ),
-            ),
-          ),
-        ),
-        _buildModuleCard(
-          title: 'Weather',
-          subtitle: 'Current forecast',
-          iconAsset: 'assets/icons/weather.png',
-          color: AppColors.success,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const WeatherScreen()),
-          ),
+        // Group Chat with unread badge
+        StreamBuilder<int>(
+          stream: sessionId.isNotEmpty && touristId.isNotEmpty
+              ? ChatBadgeService.watchUnreadCount(sessionId, touristId)
+              : Stream.value(0),
+          builder: (context, badgeSnap) {
+            final unread = badgeSnap.data ?? 0;
+            return _buildModuleCard(
+              title: 'Group Chat',
+              subtitle: 'Messages',
+              iconAsset: 'assets/icons/groupchat.png',
+              color: AppColors.accent,
+              badgeCount: unread,
+              onTap: () async {
+                // Mark messages as read
+                if (sessionId.isNotEmpty && touristId.isNotEmpty) {
+                  ChatBadgeService.updateLastRead(sessionId, touristId);
+                }
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GroupChatScreen(
+                      isCurrentUserGuide: false,
+                      sessionId: sessionId,
+                    ),
+                  ),
+                );
+                if (sessionId.isNotEmpty && touristId.isNotEmpty) {
+                  ChatBadgeService.updateLastRead(sessionId, touristId);
+                }
+              },
+            );
+          },
         ),
         _SosBlinkingModuleCard(
           isActive: _activeAlerts.isNotEmpty,
@@ -717,6 +666,7 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
     required String subtitle,
     required String iconAsset,
     required Color color,
+    int badgeCount = 0,
     required VoidCallback onTap,
   }) {
     const double containerSize = 56;
@@ -739,21 +689,55 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SizedBox(
-                width: containerSize,
-                height: containerSize,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(14),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  SizedBox(
+                    width: containerSize,
+                    height: containerSize,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Image.asset(iconAsset,
+                            width: iconSize,
+                            height: iconSize,
+                            fit: BoxFit.contain),
+                      ),
+                    ),
                   ),
-                  child: Center(
-                    child: Image.asset(iconAsset,
-                        width: iconSize,
-                        height: iconSize,
-                        fit: BoxFit.contain),
-                  ),
-                ),
+                  if (badgeCount > 0)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: badgeCount > 9 ? 6 : 0,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.error,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 20,
+                          minHeight: 20,
+                        ),
+                        child: Center(
+                          child: Text(
+                            badgeCount > 99 ? '99+' : '$badgeCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               Text(title,

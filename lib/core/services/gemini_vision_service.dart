@@ -6,8 +6,12 @@ import 'package:http/http.dart' as http;
 
 /// Result from Gemini Vision ID verification.
 class GeminiIdVerificationResult {
-  /// Whether the uploaded image is an official DOT Tour Guide ID.
-  final bool isOfficialDotId;
+  /// Whether the uploaded image is a valid Philippine government-issued ID
+  /// matching the declared [idType]. (Replaces isOfficialDotId — Step 7)
+  final bool isValidId;
+
+  /// The detected/confirmed ID type from the card.
+  final String? detectedIdType;
 
   /// Extracted full name from the ID (if detected).
   final String? extractedName;
@@ -15,7 +19,7 @@ class GeminiIdVerificationResult {
   /// Extracted ID number from the card (if detected).
   final String? extractedIdNumber;
 
-  /// Accreditation type (e.g. Regional, National).
+  /// Accreditation type (e.g. Regional, National — DOT IDs only).
   final String? accreditationType;
 
   /// Expiry date as a string (e.g. "2026-12-31").
@@ -32,10 +36,14 @@ class GeminiIdVerificationResult {
 
   /// Whether ALL checks passed and the ID is verified.
   bool get isVerified =>
-      isOfficialDotId && !isExpired && isImageClear && failureReason == null;
+      isValidId && !isExpired && isImageClear && failureReason == null;
+
+  /// Legacy getter kept for backward compatibility with existing UI code.
+  bool get isOfficialDotId => isValidId;
 
   const GeminiIdVerificationResult({
-    required this.isOfficialDotId,
+    required this.isValidId,
+    this.detectedIdType,
     this.extractedName,
     this.extractedIdNumber,
     this.accreditationType,
@@ -47,7 +55,10 @@ class GeminiIdVerificationResult {
 
   factory GeminiIdVerificationResult.fromJson(Map<String, dynamic> json) {
     return GeminiIdVerificationResult(
-      isOfficialDotId: json['isOfficialDotId'] as bool? ?? false,
+      isValidId: json['isValidId'] as bool? ??
+          json['isOfficialDotId'] as bool? ??
+          false,
+      detectedIdType: json['detectedIdType'] as String?,
       extractedName: json['extractedName'] as String?,
       extractedIdNumber: json['extractedIdNumber'] as String?,
       accreditationType: json['accreditationType'] as String?,
@@ -60,7 +71,7 @@ class GeminiIdVerificationResult {
 
   factory GeminiIdVerificationResult.failed(String reason) {
     return GeminiIdVerificationResult(
-      isOfficialDotId: false,
+      isValidId: false,
       isExpired: true,
       isImageClear: false,
       failureReason: reason,
@@ -68,49 +79,63 @@ class GeminiIdVerificationResult {
   }
 }
 
-/// Service for verifying DOT Tour Guide IDs using Google Gemini Vision API.
+/// Service for verifying Philippine government-issued IDs using Google Gemini Vision API.
 ///
-/// Sends the uploaded ID image to Gemini for AI-powered verification including:
-/// - Official DOT logo and header detection
-/// - ID layout/format validation
-/// - Name, ID Number, Accreditation Type, and Expiry Date extraction
-/// - Expiry date validation
-/// - Image quality check (blur, crop)
+/// Accepts any of the 9 supported Philippine ID types (REV-001 Step 7):
+/// - Barangay ID / Barangay Clearance with Photo
+/// - Philippine National ID (PhilID / ePhilID)
+/// - Driver's License (LTO)
+/// - Philippine Passport (DFA)
+/// - UMID / SSS / GSIS ID
+/// - Postal ID (PhilPost)
+/// - Voter's ID / Comelec Certificate
+/// - PRC ID (Professional Regulation Commission)
+/// - DOT Tour Guide Accreditation ID
 class GeminiVisionService {
   GeminiVisionService._();
 
-  /// The system prompt that instructs Gemini to verify the DOT Tour Guide ID.
-  static const String _verificationPrompt = '''
-You are an AI ID verification system for the Philippine Department of Tourism (DOT) Tour Guide ID.
+  /// Builds the Gemini verification prompt for a specific [idType].
+  /// Step 9 — Updated to recognize and validate expanded Philippine ID types.
+  static String _buildVerificationPrompt(String idType) {
+    return '''
+You are an AI ID verification system for Philippine government-issued identification documents.
+The user has declared that they are submitting a: "$idType".
 
-Analyze the uploaded image and determine if it is an authentic, valid DOT Tour Guide ID.
+Supported Philippine IDs that you MUST recognize and accept:
+1. Barangay ID / Barangay Clearance with Photo
+2. Philippine National ID (PhilID / ePhilID)
+3. Driver's License (LTO)
+4. Philippine Passport (DFA)
+5. UMID / SSS / GSIS ID
+6. Postal ID (PhilPost)
+7. Voter's ID / Comelec Certificate
+8. PRC ID (Professional Regulation Commission)
+9. DOT Tour Guide Accreditation ID
 
-Perform the following checks IN ORDER:
+Analyze the uploaded image and perform the following checks IN ORDER:
 
-1. **Official DOT ID Detection**: Check for the presence of:
-   - The official Department of Tourism (DOT) logo
-   - "Republic of the Philippines" text
-   - "Department of Tourism" text/header
-   If these official elements are NOT detected, immediately reject the ID.
+1. **ID Type Detection**: Confirm whether the uploaded image matches the declared type ("$idType") or is at least one of the 9 supported Philippine IDs listed above.
+   - Set "isValidId" to true ONLY if it is a valid, recognizable Philippine government or local government ID from the list above.
+   - Set "detectedIdType" to the actual ID type you detected (e.g. "Barangay ID", "Philippine National ID").
+   - If the image is NOT an ID at all (e.g. selfie, random document), set isValidId to false.
 
-2. **ID Layout & Format**: Verify the card follows the official DOT Tour Guide ID layout and format (photo, name, ID number, accreditation details).
+2. **Data Extraction**: Extract as much of the following as visible on the card:
+   - Full Name of the ID holder
+   - ID Number / Reference Number
+   - Expiry Date (if present — not all Philippine IDs have expiry dates; set to null if absent)
+   - Accreditation Type (only applicable to DOT Tour Guide IDs; null for others)
 
-3. **Data Extraction**: Extract the following fields:
-   - Full Name
-   - ID Number
-   - Accreditation Type (e.g. Regional, National)
-   - Expiry Date
+3. **Expiry Check**: If an expiry date is shown, determine if the ID has expired. If no expiry date is visible, set "isExpired" to false.
 
-4. **Expiry Check**: Determine if the ID has expired based on the expiry date shown on the card. Today's date is used for comparison.
-
-5. **Image Quality**: Check if the uploaded image is:
+4. **Image Quality**: Check if the uploaded image is:
    - Clear and readable (not blurry)
-   - Complete (not cropped, all edges visible)
-   - Well-lit (text is legible)
+   - Complete (not cropped, all four edges visible)
+   - Well-lit (text and photo are legible)
 
 Respond ONLY with a valid JSON object (no markdown, no code fences, no extra text) in exactly this format:
 {
-  "isOfficialDotId": true/false,
+  "isValidId": true/false,
+  "detectedIdType": "string or null",
   "extractedName": "string or null",
   "extractedIdNumber": "string or null",
   "accreditationType": "string or null",
@@ -120,17 +145,20 @@ Respond ONLY with a valid JSON object (no markdown, no code fences, no extra tex
   "failureReason": "string explaining failure or null if all checks pass"
 }
 
-If the image is NOT a DOT Tour Guide ID at all, set isOfficialDotId to false and provide a clear failureReason. Do NOT extract fields from non-DOT IDs.
+If the image is not a valid Philippine government ID, set isValidId to false and provide a clear failureReason.
 ''';
+  }
 
-  /// Verifies a DOT Tour Guide ID image using Google Gemini Vision API.
+  /// Verifies a Philippine government-issued ID image using Google Gemini Vision API.
   ///
   /// [imageBytes] - The raw bytes of the uploaded ID image.
-  /// [mimeType] - The MIME type of the image (e.g. 'image/jpeg', 'image/png').
+  /// [idType]     - The declared ID type selected by the user (Step 8).
+  /// [mimeType]   - The MIME type of the image (e.g. 'image/jpeg', 'image/png').
   ///
   /// Returns a [GeminiIdVerificationResult] with the verification outcome.
   static Future<GeminiIdVerificationResult> verifyTourGuideId(
     Uint8List imageBytes, {
+    String idType = 'Philippine Government ID',
     String mimeType = 'image/jpeg',
   }) async {
     final apiKey = AppConfig.geminiApiKey;
@@ -141,6 +169,7 @@ If the image is NOT a DOT Tour Guide ID at all, set isOfficialDotId to false and
     }
 
     final base64Image = base64Encode(imageBytes);
+    final prompt = _buildVerificationPrompt(idType);
 
     final candidateModels = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
@@ -148,7 +177,7 @@ If the image is NOT a DOT Tour Guide ID at all, set isOfficialDotId to false and
       'contents': [
         {
           'parts': [
-            {'text': _verificationPrompt},
+            {'text': prompt},
             {
               'inline_data': {
                 'mime_type': mimeType,

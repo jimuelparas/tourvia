@@ -36,12 +36,18 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
   late String _sessionId;
   late String _myTouristId; // codeDocId from the session
 
+  Timer? _clockTimer;
+
   @override
   void initState() {
     super.initState();
     final session = TouristSessionManager.current;
     _sessionId = session?.sessionId ?? '';
     _myTouristId = session?.codeDocId ?? '';
+
+    _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
 
     _stopsSub =
         ItineraryService.watchItinerary(_sessionId).listen((stops) {
@@ -66,6 +72,7 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
 
   @override
   void dispose() {
+    _clockTimer?.cancel();
     _stopsSub?.cancel();
     for (final sub in _attendanceSubs.values) {
       sub.cancel();
@@ -116,6 +123,42 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
     return '$h:$m ${dt.hour < 12 ? 'AM' : 'PM'}';
   }
 
+  Widget _buildStopStatusBadge(ItineraryStatus status) {
+    Color bg;
+    Color fg;
+    String text;
+    switch (status) {
+      case ItineraryStatus.upcoming:
+        bg = AppColors.primarySurface;
+        fg = AppColors.primary;
+        text = 'Upcoming';
+        break;
+      case ItineraryStatus.ongoing:
+        bg = AppColors.success.withValues(alpha: 0.1);
+        fg = AppColors.success;
+        text = 'Ongoing';
+        break;
+      case ItineraryStatus.completed:
+        bg = AppColors.textHint.withValues(alpha: 0.1);
+        fg = AppColors.textSecondary;
+        text = 'Completed';
+        break;
+      case ItineraryStatus.skipped:
+        bg = AppColors.error.withValues(alpha: 0.1);
+        fg = AppColors.error;
+        text = 'Skipped';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+      child: Text(text,
+          style: TextStyle(color: fg, fontSize: 10, fontWeight: FontWeight.bold)),
+    );
+  }
+
   // ── Build ─────────────────────────────────────────────────
 
   @override
@@ -140,9 +183,52 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
           ),
           body: _stops.isEmpty
               ? _buildEmptyState(context)
-              : _buildTimeline(context),
+              : Column(
+                  children: [
+                    _buildProgress(_stops),
+                    Expanded(child: _buildTimeline(context)),
+                  ],
+                ),
         );
       },
+    );
+  }
+
+  Widget _buildProgress(List<ItineraryItem> stops) {
+    final completed =
+        stops.where((s) => s.effectiveStatus == ItineraryStatus.completed).length;
+    final percent = stops.isEmpty ? 0.0 : completed / stops.length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Tour Progress',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      color: AppColors.textSecondary)),
+              Text('$completed / ${stops.length} Stops Completed',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      color: AppColors.primary)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: percent,
+            backgroundColor: AppColors.primarySurface,
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(4),
+            minHeight: 6,
+          ),
+        ],
+      ),
     );
   }
 
@@ -288,12 +374,19 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // ── Stop title ─────────────────────
-                      Text(
-                        stop.destinationName,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              stop.destinationName,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          _buildStopStatusBadge(stop.effectiveStatus),
+                        ],
                       ),
                       const SizedBox(height: 6),
                       // ── Time ───────────────────────────

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../main.dart';
 
@@ -11,17 +10,22 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/models/tourist_session.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/services/routing_service.dart';
+import '../mixins/navigation_mixin.dart';
 
 /// Screen to display the live map for the Tourist (US-16).
 /// Integrates a real OpenStreetMap view, live GPS tracking, and a 1 km geofence alert.
 class TouristMapScreen extends StatefulWidget {
-  const TouristMapScreen({super.key});
+  final String? sessionId;
+
+  const TouristMapScreen({super.key, this.sessionId});
 
   @override
   State<TouristMapScreen> createState() => _TouristMapScreenState();
 }
 
-class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
+class _TouristMapScreenState extends State<TouristMapScreen>
+    with RouteAware, NavigationMixin<TouristMapScreen> {
   final MapController _mapController = MapController();
 
   LatLng _touristPosition = const LatLng(14.5995, 120.9842); // Manila default
@@ -103,9 +107,15 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
     }
 
     final session = TouristSessionManager.current;
-    final sessionId = session?.sessionId ?? '';
-    final touristId = session?.codeDocId ?? 'demo-tourist-001';
-    final touristName = session?.touristName ?? 'Tourist';
+    final sessionId = (widget.sessionId?.isNotEmpty == true)
+        ? widget.sessionId!
+        : (session?.sessionId ?? '');
+    final touristId = (session?.codeDocId.isNotEmpty == true)
+        ? session!.codeDocId
+        : (session?.touristId ?? 'demo-tourist-001');
+    final touristName = (session?.touristName.isNotEmpty == true)
+        ? session!.touristName
+        : 'Tourist';
 
     // 1. Publish location to Firestore periodically
     _publishSubscription = LocationService.startPublishingLocation(
@@ -124,10 +134,15 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
           ),
         ).listen((pos) {
           if (!mounted) return;
+          final newPos = LatLng(pos.latitude, pos.longitude);
           setState(() {
-            _touristPosition = LatLng(pos.latitude, pos.longitude);
+            _touristPosition = newPos;
             _calcDistance();
           });
+          // Update live navigation distance
+          if (navIsNavigating) {
+            updateNavDistance(newPos);
+          }
         });
 
     // 3. Watch session locations to get guide position
@@ -151,6 +166,15 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
             _guidePosition = LatLng(guide.latitude, guide.longitude);
             _calcDistance();
           });
+          // Refresh route if guide moved significantly while navigating
+          if (navIsNavigating) {
+            refreshRouteIfNeeded(
+              currentPosition: _touristPosition,
+              newTargetPosition: LatLng(guide.latitude, guide.longitude),
+              mapController: _mapController,
+              thresholdMeters: 50.0,
+            );
+          }
         });
 
     // 4. Listen for ring command from guide
@@ -218,33 +242,43 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
     );
   }
 
+  /// Starts in-app navigation to the Tour Guide using OSRM routing.
+  /// Renders a polyline on the map and displays a floating Navigation HUD.
   Future<void> _routeToGuide() async {
-    // Try geo: URI first (opens native maps app)
-    final geoUri = Uri.parse(
-      'geo:${_guidePosition.latitude},${_guidePosition.longitude}'
-      '?q=${_guidePosition.latitude},${_guidePosition.longitude}',
-    );
-    // Fallback: Google Maps directions link
-    final mapsUri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1'
-      '&origin=${_touristPosition.latitude},${_touristPosition.longitude}'
-      '&destination=${_guidePosition.latitude},${_guidePosition.longitude}'
-      '&travelmode=walking',
-    );
+    LatLng startPos = _touristPosition;
     try {
-      if (await canLaunchUrl(geoUri)) {
-        await launchUrl(geoUri);
-      } else {
-        await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
+      final fresh = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 3),
+        ),
+      );
+      if (RoutingService.isValidCoordinate(fresh.latitude, fresh.longitude)) {
+        startPos = LatLng(fresh.latitude, fresh.longitude);
+        if (mounted) setState(() => _touristPosition = startPos);
       }
-    } catch (_) {
-      // Final fallback — force external browser
-      await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
-    }
+    } catch (_) {}
+
+    await startNavigation(
+      start: startPos,
+      end: _guidePosition,
+      targetLabel: 'Tour Guide',
+      mapController: _mapController,
+    );
+  }
+
+  @override
+  void deactivate() {
+    _publishSubscription?.cancel();
+    _localLocSubscription?.cancel();
+    _ringSubscription?.cancel();
+    _allLocationsSubscription?.cancel();
+    super.deactivate();
   }
 
   @override
   void dispose() {
+    disposeNavigation();
     routeObserver.unsubscribe(this);
     _publishSubscription?.cancel();
     _localLocSubscription?.cancel();
@@ -336,6 +370,8 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
                   ),
                 ],
               ),
+              // In-app navigation polyline (REV-003)
+              buildNavPolylineLayer(),
               // Guide + Tourist markers
               MarkerLayer(
                 markers: [
@@ -378,7 +414,7 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
           if (_isOutOfBounds)
             Positioned(top: 0, left: 0, right: 0, child: _buildBoundaryAlert()),
 
-          // Navigate to guide button — always visible at bottom
+          // Navigate to guide / Navigation HUD — always visible at bottom
           Positioned(
             bottom: 24,
             left: 24,
@@ -388,68 +424,78 @@ class _TouristMapScreenState extends State<TouristMapScreen> with RouteAware {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Distance info card
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.95),
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          _isOutOfBounds
-                              ? Icons.warning_rounded
-                              : Icons.check_circle_rounded,
-                          color: _isOutOfBounds
-                              ? AppColors.error
-                              : AppColors.success,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _isOutOfBounds
-                              ? '⚠ ${(_distanceToGuide / 1000).toStringAsFixed(2)} km — Outside boundary'
-                              : '✅ ${_distanceToGuide.toStringAsFixed(0)} m — Within safe zone',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
+                  if (!navIsNavigating && !navIsLoading)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.95),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _isOutOfBounds
+                                ? Icons.warning_rounded
+                                : Icons.check_circle_rounded,
                             color: _isOutOfBounds
                                 ? AppColors.error
                                 : AppColors.success,
+                            size: 18,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: _routeToGuide,
-                    icon: const Icon(Icons.directions_rounded),
-                    label: const Text('Navigate to Guide'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isOutOfBounds
-                          ? AppColors.error
-                          : AppColors.accent,
-                      foregroundColor: Colors.white,
-                      elevation: 6,
-                      minimumSize: const Size(double.infinity, 50),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                          const SizedBox(width: 8),
+                          Text(
+                            _isOutOfBounds
+                                ? '⚠ ${(_distanceToGuide / 1000).toStringAsFixed(2)} km — Outside boundary'
+                                : '✅ ${_distanceToGuide.toStringAsFixed(0)} m — Within safe zone',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: _isOutOfBounds
+                                  ? AppColors.error
+                                  : AppColors.success,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
+                  // Show HUD when navigating, otherwise show Navigate button
+                  if (navIsNavigating || navIsLoading)
+                    buildNavigationHUD(
+                      currentPosition: _touristPosition,
+                      mapController: _mapController,
+                      onRecenter: () =>
+                          _mapController.move(_touristPosition, 16.0),
+                    )
+                  else
+                    ElevatedButton.icon(
+                      onPressed: _routeToGuide,
+                      icon: const Icon(Icons.directions_rounded),
+                      label: const Text('Navigate to Guide'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isOutOfBounds
+                            ? AppColors.error
+                            : AppColors.accent,
+                        foregroundColor: Colors.white,
+                        elevation: 6,
+                        minimumSize: const Size(double.infinity, 50),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

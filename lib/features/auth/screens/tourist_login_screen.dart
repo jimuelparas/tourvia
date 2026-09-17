@@ -11,6 +11,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../tourist/screens/tourist_dashboard_screen.dart';
 import '../widgets/custom_text_field.dart';
 import 'terms_and_conditions_screen.dart';
+import 'waiting_for_approval_screen.dart';
 
 /// Tourist login screen via access code (US-04).
 ///
@@ -280,13 +281,87 @@ class _TouristLoginScreenState extends State<TouristLoginScreen>
                           final scaffoldMessenger = ScaffoldMessenger.of(context);
 
                           try {
-                            await AccessCodeService.claimCode(
-                              codeDoc: _validatedCodeDoc!,
-                              touristName: name,
-                            );
-                            if (!rootContext.mounted) return;
-                            navigator.pop(); // Close sheet
-                            _showTermsAndConditions();
+                            final isTourDoc =
+                                _validatedCodeDoc!.reference.parent.id == 'tours';
+                            if (isTourDoc) {
+                              final tourId = _validatedCodeDoc!.id;
+                              final tourData = _validatedCodeDoc!.data() ?? {};
+                              final tourName =
+                                  tourData['name'] as String? ?? 'Tour';
+                              final guideName = tourData['guideName'] as String? ??
+                                  'Tour Guide';
+                              final accessCode =
+                                  (tourData['accessCode'] as String? ??
+                                          _accessCodeCtrl.text)
+                                      .toUpperCase();
+
+                              // Check if tourist is already in the approved roster
+                              final touristDocQuery = await FirebaseFirestore
+                                  .instance
+                                  .collection('tours')
+                                  .doc(tourId)
+                                  .collection('tourists')
+                                  .where('touristName', isEqualTo: name)
+                                  .limit(1)
+                                  .get();
+
+                              if (touristDocQuery.docs.isNotEmpty) {
+                                final touristDoc = touristDocQuery.docs.first;
+                                final session = TouristSession(
+                                  code: accessCode,
+                                  touristName: name,
+                                  sessionId: tourId,
+                                  codeDocId: touristDoc.id,
+                                );
+                                await TouristSessionManager.set(session);
+                                if (!rootContext.mounted) return;
+                                navigator.pop();
+                                _showTermsAndConditions();
+                                return;
+                              }
+
+                              // Create new join request under /tours/{tourId}/join_requests
+                              final joinReqRef = FirebaseFirestore.instance
+                                  .collection('tours')
+                                  .doc(tourId)
+                                  .collection('join_requests')
+                                  .doc();
+
+                              await joinReqRef.set({
+                                'tourId': tourId,
+                                'touristId': joinReqRef.id,
+                                'touristName': name,
+                                'contactNumber': '',
+                                'emergencyContact': '',
+                                'status': 'pending',
+                                'createdAt': FieldValue.serverTimestamp(),
+                              });
+
+                              if (!rootContext.mounted) return;
+                              navigator.pop(); // Close sheet
+
+                              // Push to WaitingForApprovalScreen
+                              Navigator.of(rootContext).pushReplacement(
+                                MaterialPageRoute(
+                                  builder: (_) => WaitingForApprovalScreen(
+                                    tourId: tourId,
+                                    tourName: tourName,
+                                    guideName: guideName,
+                                    touristId: joinReqRef.id,
+                                    touristName: name,
+                                    accessCode: accessCode,
+                                  ),
+                                ),
+                              );
+                            } else {
+                              await AccessCodeService.claimCode(
+                                codeDoc: _validatedCodeDoc!,
+                                touristName: name,
+                              );
+                              if (!rootContext.mounted) return;
+                              navigator.pop(); // Close sheet
+                              _showTermsAndConditions();
+                            }
                           } catch (_) {
                             if (!rootContext.mounted) return;
                             setSheetState(() => isClaiming = false);

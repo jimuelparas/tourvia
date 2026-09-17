@@ -40,14 +40,18 @@ class SosAlert {
   }
 }
 
-/// Service for SOS / Emergency Alerts operations.
+/// Service for SOS / Emergency Alerts operations (REV-002).
 class SosService {
   SosService._();
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  static CollectionReference<Map<String, dynamic>> _sosCol(String sessionId) {
-    return _db.collection('tour_sessions').doc(sessionId).collection('sos');
+  static CollectionReference<Map<String, dynamic>> _sosCol(String tourId) {
+    return _db.collection('tours').doc(tourId).collection('sos');
+  }
+
+  static CollectionReference<Map<String, dynamic>> _legacySosCol(String tourId) {
+    return _db.collection('tour_sessions').doc(tourId).collection('sos');
   }
 
   // ── Write ───────────────────────────────────────────────────
@@ -61,7 +65,7 @@ class SosService {
     required double lng,
     String status = 'SOS Alert Sent',
   }) async {
-    await _sosCol(sessionId).add({
+    final alertData = {
       'senderId': senderId,
       'senderName': senderName,
       'lat': lat,
@@ -69,7 +73,12 @@ class SosService {
       'status': status,
       'isResolved': false,
       'timestamp': FieldValue.serverTimestamp(),
-    });
+    };
+
+    final docRef = await _sosCol(sessionId).add(alertData);
+    try {
+      await _legacySosCol(sessionId).doc(docRef.id).set(alertData);
+    } catch (_) {}
   }
 
   /// Marks an existing SOS alert as resolved.
@@ -77,21 +86,44 @@ class SosService {
     required String sessionId,
     required String alertId,
   }) async {
-    await _sosCol(sessionId).doc(alertId).update({
+    final updateData = {
       'isResolved': true,
       'status': 'Resolved',
-    });
+      'resolvedAt': FieldValue.serverTimestamp(),
+    };
+    try {
+      await _sosCol(sessionId).doc(alertId).update(updateData);
+    } catch (_) {}
+    try {
+      await _legacySosCol(sessionId).doc(alertId).update(updateData);
+    } catch (_) {}
   }
 
   // ── Read ────────────────────────────────────────────────────
 
   /// Real-time stream of ALL alerts (active + resolved) ordered latest first.
-  static Stream<List<SosAlert>> watchAlerts(String sessionId) {
-    return _sosCol(sessionId)
+  static Stream<List<SosAlert>> watchAlerts(String tourId) {
+    return _sosCol(tourId)
         .orderBy('timestamp', descending: true)
         .snapshots()
-        .map((snap) =>
-            snap.docs.map((doc) => SosAlert.fromFirestore(doc.id, doc.data())).toList());
+        .asyncMap((snap) async {
+      if (snap.docs.isNotEmpty) {
+        return snap.docs
+            .map((doc) => SosAlert.fromFirestore(doc.id, doc.data()))
+            .toList();
+      }
+      try {
+        final legSnap = await _legacySosCol(tourId)
+            .orderBy('timestamp', descending: true)
+            .get();
+        if (legSnap.docs.isNotEmpty) {
+          return legSnap.docs
+              .map((doc) => SosAlert.fromFirestore(doc.id, doc.data()))
+              .toList();
+        }
+      } catch (_) {}
+      return [];
+    });
   }
 
   /// Real-time stream of only ACTIVE (unresolved) alerts.

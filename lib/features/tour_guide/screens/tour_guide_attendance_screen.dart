@@ -4,22 +4,27 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_strings.dart';
 import '../../../core/services/attendance_service.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/itinerary_service.dart';
+import '../../../core/services/tour_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../attendance/models/tourist_attendance.dart';
 import '../../itinerary/models/itinerary_item.dart' hide AttendanceStatus;
 import '../../tracking/screens/tour_guide_map_screen.dart';
+import 'tour_guide_home_screen.dart';
 
 /// Screen to monitor tourist attendance (US-10 / US-26).
 ///
 /// Tab 1 — "All Tourists": roster of every joined tourist with overall status.
 /// Tab 2 — "By Stop": pick an itinerary stop and mark attendance per tourist.
 class TourGuideAttendanceScreen extends StatefulWidget {
-  final String sessionId;
+  final String? sessionId;
+  final String? tourId;
 
   const TourGuideAttendanceScreen({
     super.key,
-    required this.sessionId,
+    this.sessionId,
+    this.tourId,
   });
 
   @override
@@ -28,6 +33,7 @@ class TourGuideAttendanceScreen extends StatefulWidget {
 }
 
 class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
+  String _effectiveTourId = '';
   // ── Live data ────────────────────────────────────────────
   List<TouristRecord> _roster = [];
   List<ItineraryItem> _stops = [];
@@ -36,6 +42,7 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
   ItineraryItem? _selectedStop;
   Map<String, AttendanceRecord> _stopRecords = {};
 
+  StreamSubscription? _activeTourSub;
   StreamSubscription? _rosterSub;
   StreamSubscription? _stopsSub;
   StreamSubscription? _recordsSub;
@@ -43,20 +50,58 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
   @override
   void initState() {
     super.initState();
+    final initialId = widget.tourId ?? widget.sessionId ?? '';
+    final guideId = AuthService.currentUser?.uid ?? '';
 
-    _rosterSub = AttendanceService.watchRoster(widget.sessionId).listen((r) {
+    if (initialId.isNotEmpty && initialId != guideId) {
+      _effectiveTourId = initialId;
+      _initListeners(initialId);
+    } else {
+      // Auto-detect active tour
+      _activeTourSub = TourService.watchActiveTour(guideId).listen((activeTour) {
+        if (activeTour != null && activeTour.id != _effectiveTourId) {
+          if (mounted) {
+            setState(() => _effectiveTourId = activeTour.id);
+            _initListeners(activeTour.id);
+          }
+        }
+      });
+    }
+  }
+
+  void _initListeners(String tourId) {
+    _rosterSub?.cancel();
+    _stopsSub?.cancel();
+    _recordsSub?.cancel();
+
+    _rosterSub = AttendanceService.watchRoster(tourId).listen((r) {
       if (mounted) setState(() => _roster = r);
     });
 
-    _stopsSub =
-        ItineraryService.watchItinerary(widget.sessionId).listen((stops) {
+    _stopsSub = ItineraryService.watchItinerary(tourId).listen((stops) {
       if (!mounted) return;
+      final sortedStops = [...stops];
+      sortedStops.sort((a, b) {
+        final dateComp = a.date.compareTo(b.date);
+        if (dateComp != 0) return dateComp;
+        return ItineraryService.parseTimeToMinutes(a.startTime)
+            .compareTo(ItineraryService.parseTimeToMinutes(b.startTime));
+      });
+
       setState(() {
-        _stops = stops;
-        // Auto-select first stop if none chosen yet
-        if (_selectedStop == null && stops.isNotEmpty) {
-          _selectedStop = stops.first;
+        _stops = sortedStops;
+        if (_selectedStop == null && sortedStops.isNotEmpty) {
+          _selectedStop = sortedStops.first;
           _subscribeToRecords(_selectedStop!.id);
+        } else if (_selectedStop != null) {
+          final stillExists =
+              sortedStops.where((s) => s.id == _selectedStop!.id).firstOrNull;
+          if (stillExists != null) {
+            _selectedStop = stillExists;
+          } else if (sortedStops.isNotEmpty) {
+            _selectedStop = sortedStops.first;
+            _subscribeToRecords(_selectedStop!.id);
+          }
         }
       });
     });
@@ -64,7 +109,7 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
 
   void _subscribeToRecords(String stopId) {
     _recordsSub?.cancel();
-    _recordsSub = AttendanceService.watchAttendance(widget.sessionId, stopId)
+    _recordsSub = AttendanceService.watchAttendance(_effectiveTourId, stopId)
         .listen((recs) {
       if (mounted) setState(() => _stopRecords = recs);
     });
@@ -72,6 +117,7 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
 
   @override
   void dispose() {
+    _activeTourSub?.cancel();
     _rosterSub?.cancel();
     _stopsSub?.cancel();
     _recordsSub?.cancel();
@@ -97,7 +143,7 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
         .toList();
     for (final t in pending) {
       await AttendanceService.markAttendance(
-        sessionId: widget.sessionId,
+        sessionId: _effectiveTourId,
         stopId: _selectedStop!.id,
         touristId: t.codeDocId,
         touristName: t.touristName,
@@ -115,12 +161,24 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          leading: const BackButton(),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: () {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              } else {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const TourGuideHomeScreen()),
+                  (route) => false,
+                );
+              }
+            },
+          ),
           iconTheme: const IconThemeData(color: AppColors.primary),
           actions: [
             IconButton(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => TourGuideMapScreen(sessionId: widget.sessionId),
+                builder: (_) => TourGuideMapScreen(sessionId: _effectiveTourId),
               )),
               icon:
                   const Icon(Icons.map_rounded, color: AppColors.primary),
@@ -351,8 +409,12 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '${_roster.length} tourist${_roster.length == 1 ? '' : 's'}',
-                  style: const TextStyle(color: AppColors.textSecondary),
+                  '$presentCount / ${_roster.length} Present',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
                 if (pendingCount > 0)
                   TextButton.icon(
@@ -499,7 +561,7 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
                 if (status != AttendanceStatus.present)
                   _quickBtn(Icons.check_rounded, AppColors.success, () async {
                     await AttendanceService.markAttendance(
-                      sessionId: widget.sessionId,
+                      sessionId: _effectiveTourId,
                       stopId: stop.id,
                       touristId: tourist.codeDocId,
                       touristName: tourist.touristName,
@@ -511,7 +573,7 @@ class _TourGuideAttendanceScreenState extends State<TourGuideAttendanceScreen> {
                   const SizedBox(width: 6),
                   _quickBtn(Icons.close_rounded, AppColors.error, () async {
                     await AttendanceService.markAttendance(
-                      sessionId: widget.sessionId,
+                      sessionId: _effectiveTourId,
                       stopId: stop.id,
                       touristId: tourist.codeDocId,
                       touristName: tourist.touristName,

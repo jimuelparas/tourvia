@@ -13,63 +13,161 @@ class AccessCodeService {
 
   // ── Step 3: Tourist Login ───────────────────────────────
 
-  /// Validates [code] against all active codes across all tour sessions.
+  /// Validates [code] against active tours in /access_codes/{code},
+  /// /tours where accessCode == input, or /tour_sessions/{sessionId}/codes.
   ///
   /// Returns the raw Firestore document snapshot if valid, or throws
   /// [AccessCodeException] with a specific code.
-  ///
-  /// Query path: /tour_sessions/{sessionId}/codes where code == input AND isActive == true
   static Future<DocumentSnapshot<Map<String, dynamic>>> validateCode(
       String code) async {
     final trimmed = code.trim().toUpperCase();
 
-    // Firestore doesn't support cross-collection queries easily, so we use
-    // a collectionGroup query on "codes" sub-collections.
-    final query = await _db
-        .collectionGroup('codes')
-        .where('code', isEqualTo: trimmed)
-        .where('isActive', isEqualTo: true)
-        .limit(1)
-        .get();
-
-    if (query.docs.isEmpty) {
-      throw AccessCodeException('code-not-found');
+    // 1. Check index collection /access_codes/{code}
+    try {
+      final codeDoc = await _db.collection('access_codes').doc(trimmed).get();
+      if (codeDoc.exists) {
+        final codeData = codeDoc.data()!;
+        final tourId = codeData['tourId'] as String? ?? codeDoc.id;
+        final tourDoc = await _db.collection('tours').doc(tourId).get();
+        if (tourDoc.exists) {
+          final data = tourDoc.data()!;
+          final status = (data['status'] as String? ?? 'active').toLowerCase();
+          if (status == 'completed' || status == 'ended') {
+            throw AccessCodeException('code-inactive');
+          }
+          return tourDoc;
+        }
+      }
+    } catch (e) {
+      if (e is AccessCodeException) rethrow;
     }
 
-    final doc = query.docs.first;
-    final data = doc.data();
+    // 2. Query /tours collection directly by accessCode
+    try {
+      final tourQuery = await _db
+          .collection('tours')
+          .where('accessCode', isEqualTo: trimmed)
+          .limit(1)
+          .get();
 
-    if (data['isActive'] != true) {
-      throw AccessCodeException('code-inactive');
+      if (tourQuery.docs.isNotEmpty) {
+        final tourDoc = tourQuery.docs.first;
+        final data = tourDoc.data();
+        final status = (data['status'] as String? ?? 'active').toLowerCase();
+        if (status == 'completed' || status == 'ended') {
+          throw AccessCodeException('code-inactive');
+        }
+        return tourDoc;
+      }
+    } catch (e) {
+      if (e is AccessCodeException) rethrow;
     }
 
-    return doc;
+    // 3. Fallback to legacy collectionGroup('codes')
+    try {
+      final query = await _db
+          .collectionGroup('codes')
+          .where('code', isEqualTo: trimmed)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (query.docs.isNotEmpty) {
+        final doc = query.docs.first;
+        final data = doc.data();
+        if (data['isActive'] != true) {
+          throw AccessCodeException('code-inactive');
+        }
+        return doc;
+      }
+    } catch (_) {}
+
+    throw AccessCodeException('code-not-found');
   }
 
-  /// Claims [codeDocRef] for a tourist by writing their name and a timestamp.
+  /// Claims [codeDoc] for a tourist by writing their name and a timestamp.
   /// Also creates a TouristSession in the singleton manager.
-  ///
-  /// If the code already has a touristName, it means it was previously claimed —
-  /// we still allow entry (re-join) but don't overwrite the name unless it changed.
   static Future<TouristSession> claimCode({
     required DocumentSnapshot<Map<String, dynamic>> codeDoc,
     required String touristName,
+    String? contactNumber,
+    String? emergencyContact,
   }) async {
-    final data = codeDoc.data()!;
+    final data = codeDoc.data() ?? {};
+    final isTourDoc = codeDoc.reference.parent.id == 'tours';
 
-    // Extract sessionId from the parent document path
-    // Path structure: /tour_sessions/{sessionId}/codes/{codeDocId}
-    final sessionId = codeDoc.reference.parent.parent!.id;
-    final codeDocId = codeDoc.id;
-    final code = data['code'] as String;
+    String sessionId;
+    String codeDocId;
+    String code;
 
-    // Only write if not yet claimed or name changed
-    final existingName = data['touristName'] as String?;
-    if (existingName == null || existingName.isEmpty) {
-      await codeDoc.reference.update({
-        'touristName': touristName.trim(),
-        'claimedAt': FieldValue.serverTimestamp(),
-      });
+    if (isTourDoc) {
+      sessionId = codeDoc.id;
+      code = (data['accessCode'] as String? ?? '').toUpperCase();
+      final tourName = data['name'] as String? ?? 'Tour';
+      final totalDays = (data['totalDays'] as num?)?.toInt() ?? 1;
+
+      // Ensure /tour_sessions/{sessionId} document exists and is synced
+      await _db.collection('tour_sessions').doc(sessionId).set({
+        'tourName': tourName,
+        'totalDays': totalDays,
+        'currentDay': 1,
+        'status': 'active',
+        'guideId': data['guideId'],
+        'guideName': data['guideName'],
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      final codesCol =
+          _db.collection('tour_sessions').doc(sessionId).collection('codes');
+
+      final existingCodes = await codesCol
+          .where('touristName', isEqualTo: touristName.trim())
+          .limit(1)
+          .get();
+
+      if (existingCodes.docs.isNotEmpty) {
+        codeDocId = existingCodes.docs.first.id;
+      } else {
+        final newDoc = codesCol.doc();
+        codeDocId = newDoc.id;
+        await newDoc.set({
+          'code': code,
+          'touristName': touristName.trim(),
+          'isActive': true,
+          'claimedAt': FieldValue.serverTimestamp(),
+          'sessionId': sessionId,
+        });
+
+        // Also add pending join_request in /tours/{sessionId}/join_requests/{codeDocId}
+        final joinReqRef = _db
+            .collection('tours')
+            .doc(sessionId)
+            .collection('join_requests')
+            .doc(codeDocId);
+
+        await joinReqRef.set({
+          'tourId': sessionId,
+          'touristId': codeDocId,
+          'touristName': touristName.trim(),
+          'contactNumber': contactNumber?.trim() ?? '',
+          'emergencyContact': emergencyContact?.trim() ?? '',
+          'status': 'pending',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } else {
+      // Legacy path: /tour_sessions/{sessionId}/codes/{codeDocId}
+      sessionId = codeDoc.reference.parent.parent!.id;
+      codeDocId = codeDoc.id;
+      code = data['code'] as String? ?? '';
+
+      final existingName = data['touristName'] as String?;
+      if (existingName == null || existingName.isEmpty) {
+        await codeDoc.reference.update({
+          'touristName': touristName.trim(),
+          'claimedAt': FieldValue.serverTimestamp(),
+        });
+      }
     }
 
     final session = TouristSession(

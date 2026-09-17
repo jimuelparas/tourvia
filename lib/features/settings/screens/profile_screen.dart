@@ -206,6 +206,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   void _showChangePasswordDialog() {
+    final isGoogle = AuthService.isGoogleUser;
     _currentPasswordCtrl.clear();
     _newPasswordCtrl.clear();
     _confirmPasswordCtrl.clear();
@@ -228,25 +229,39 @@ class _ProfileScreenState extends State<ProfileScreen>
                     color: AppColors.primary, size: 22),
               ),
               const SizedBox(width: 12),
-              const Text('Change Password'),
+              Text(isGoogle ? 'Set Account Password' : 'Change Password'),
             ],
           ),
           content: Form(
             key: _passwordFormKey,
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildPasswordField(
-                  controller: _currentPasswordCtrl,
-                  label: 'Current Password',
-                  obscure: _obscureCurrent,
-                  onToggle: () =>
-                      setDialogState(() => _obscureCurrent = !_obscureCurrent),
-                  validator: (val) => val == null || val.isEmpty
-                      ? 'Enter your current password'
-                      : null,
-                ),
-                const SizedBox(height: 12),
+                if (isGoogle) ...[
+                  const Text(
+                    'Your account is authenticated via Google. Setting a password allows you to also log in using your email and password.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (!isGoogle) ...[
+                  _buildPasswordField(
+                    controller: _currentPasswordCtrl,
+                    label: 'Current Password',
+                    obscure: _obscureCurrent,
+                    onToggle: () =>
+                        setDialogState(() => _obscureCurrent = !_obscureCurrent),
+                    validator: (val) => val == null || val.isEmpty
+                        ? 'Enter your current password'
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _buildPasswordField(
                   controller: _newPasswordCtrl,
                   label: 'New Password',
@@ -289,7 +304,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Update Password'),
+              child: Text(isGoogle ? 'Save Password' : 'Update Password'),
             ),
           ],
         ),
@@ -310,13 +325,16 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
 
     try {
+      final isGoogle = AuthService.isGoogleUser;
       await AuthService.updatePassword(
-        currentPassword: _currentPasswordCtrl.text,
+        currentPassword: isGoogle ? null : _currentPasswordCtrl.text,
         newPassword: _newPasswordCtrl.text,
       );
       if (!mounted) return;
       Navigator.pop(context); // dismiss loading
-      _showSnackbar('Password changed successfully!');
+      _showSnackbar(isGoogle
+          ? 'Password set successfully! You can now log in with email/password.'
+          : 'Password changed successfully!');
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       Navigator.pop(context); // dismiss loading
@@ -577,6 +595,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Widget _buildPasswordSection() {
+    final isGoogle = AuthService.isGoogleUser;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -619,22 +638,24 @@ class _ProfileScreenState extends State<ProfileScreen>
                         color: AppColors.primary, size: 20),
                   ),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Change Password',
-                          style: TextStyle(
+                          isGoogle ? 'Set Account Password' : 'Change Password',
+                          style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
                             color: AppColors.textPrimary,
                           ),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
-                          'Update your account password',
-                          style: TextStyle(
+                          isGoogle
+                              ? 'Logged in with Google — tap to set a password'
+                              : 'Update your account password',
+                          style: const TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
                           ),
@@ -692,7 +713,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                       color: AppColors.error.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.delete_forever_rounded,
+                    child: const Icon(Icons.delete_outline_rounded,
                         color: AppColors.error, size: 20),
                   ),
                   const SizedBox(width: 14),
@@ -710,7 +731,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                         ),
                         SizedBox(height: 2),
                         Text(
-                          'Permanently delete your account and all data',
+                          'Permanently remove your account and all data',
                           style: TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
@@ -731,6 +752,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   void _showDeleteAccountDialog() {
+    final isGoogle = AuthService.isGoogleUser;
     _deletePasswordCtrl.clear();
     _obscureDeletePassword = true;
 
@@ -768,55 +790,57 @@ class _ProfileScreenState extends State<ProfileScreen>
                   height: 1.5,
                 ),
               ),
-              const SizedBox(height: 16),
-              const Text(
-                'Enter your password to confirm:',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+              if (!isGoogle) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Enter your password to confirm:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _deletePasswordCtrl,
-                obscureText: _obscureDeletePassword,
-                style: const TextStyle(fontSize: 14),
-                cursorColor: AppColors.error,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock_outline_rounded,
-                      size: 20, color: AppColors.textSecondary),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureDeletePassword
-                          ? Icons.visibility_off_rounded
-                          : Icons.visibility_rounded,
-                      size: 20,
-                      color: AppColors.textHint,
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _deletePasswordCtrl,
+                  obscureText: _obscureDeletePassword,
+                  style: const TextStyle(fontSize: 14),
+                  cursorColor: AppColors.error,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    prefixIcon: const Icon(Icons.lock_outline_rounded,
+                        size: 20, color: AppColors.textSecondary),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureDeletePassword
+                            ? Icons.visibility_off_rounded
+                            : Icons.visibility_rounded,
+                        size: 20,
+                        color: AppColors.textHint,
+                      ),
+                      onPressed: () => setDialogState(
+                          () => _obscureDeletePassword = !_obscureDeletePassword),
                     ),
-                    onPressed: () => setDialogState(
-                        () => _obscureDeletePassword = !_obscureDeletePassword),
-                  ),
-                  filled: true,
-                  fillColor: Theme.of(context).inputDecorationTheme.fillColor,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: AppColors.error, width: 1.5),
+                    filled: true,
+                    fillColor: Theme.of(context).inputDecorationTheme.fillColor,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: AppColors.error, width: 1.5),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
           actions: [
@@ -841,7 +865,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _deleteAccount(BuildContext dialogContext) async {
-    if (_deletePasswordCtrl.text.isEmpty) {
+    final isGoogle = AuthService.isGoogleUser;
+    if (!isGoogle && _deletePasswordCtrl.text.isEmpty) {
       _showSnackbar('Please enter your password.', isError: true);
       return;
     }
@@ -858,7 +883,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
 
     try {
-      await AuthService.deleteAccount(password: _deletePasswordCtrl.text);
+      await AuthService.deleteAccount(
+        password: isGoogle ? null : _deletePasswordCtrl.text,
+      );
       if (!mounted) return;
       Navigator.pop(context); // dismiss loading
       // Navigate to login screen and clear all routes

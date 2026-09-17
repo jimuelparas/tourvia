@@ -128,16 +128,29 @@ class NotificationService {
     final token = currentToken ?? await _fcm.getToken();
     if (token == null) return;
 
-    await _db
-        .collection('tour_sessions')
-        .doc(sessionId)
-        .collection('tourists')
-        .doc(codeDocId)
-        .set({
+    final tokenData = {
       'fcmToken': token,
       'platform': kIsWeb ? 'web' : (defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android'),
       'tokenUpdatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    };
+
+    try {
+      await _db
+          .collection('tours')
+          .doc(sessionId)
+          .collection('tourists')
+          .doc(codeDocId)
+          .set(tokenData, SetOptions(merge: true));
+    } catch (_) {}
+
+    try {
+      await _db
+          .collection('tour_sessions')
+          .doc(sessionId)
+          .collection('tourists')
+          .doc(codeDocId)
+          .set(tokenData, SetOptions(merge: true));
+    } catch (_) {}
 
     debugPrint('[FCM] Token saved for tourist $codeDocId');
   }

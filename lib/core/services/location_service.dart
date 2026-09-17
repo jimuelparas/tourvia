@@ -49,10 +49,17 @@ class LocationService {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  static CollectionReference<Map<String, dynamic>> _locCol(String sessionId) {
+  static CollectionReference<Map<String, dynamic>> _locCol(String tourId) {
+    return _db
+        .collection('tours')
+        .doc(tourId)
+        .collection('locations');
+  }
+
+  static CollectionReference<Map<String, dynamic>> _legacyLocCol(String tourId) {
     return _db
         .collection('tour_sessions')
-        .doc(sessionId)
+        .doc(tourId)
         .collection('locations');
   }
 
@@ -82,61 +89,140 @@ class LocationService {
     return true;
   }
 
+  /// Pushes the device's immediate current position to Firestore without waiting for stream deltas.
+  static Future<void> pushCurrentLocation({
+    required String sessionId,
+    required String userId,
+    required String userName,
+    required bool isGuide,
+  }) async {
+    try {
+      final pos = await Geolocator.getCurrentPosition();
+      final locData = {
+        'userId': userId,
+        'userName': userName,
+        'latitude': pos.latitude,
+        'longitude': pos.longitude,
+        'accuracy': pos.accuracy,
+        'isGuide': isGuide,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      await _locCol(sessionId).doc(userId).set(locData, SetOptions(merge: true));
+      try {
+        await _legacyLocCol(sessionId).doc(userId).set(locData, SetOptions(merge: true));
+      } catch (_) {}
+    } catch (_) {}
+  }
+
   /// Subscribes to the device's location stream and pushes coordinates to Firestore.
-  /// Pushes coordinates when location changes by 5+ meters or every 15 seconds.
+  /// Pushes an immediate location fix upon start, then pushes on movements or periodic timer.
   static StreamSubscription<Position>? startPublishingLocation({
     required String sessionId,
     required String userId,
     required String userName,
     required bool isGuide,
   }) {
-    // Configure location settings
-    final locationSettings = AndroidSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 1,
-      intervalDuration: const Duration(seconds: 3),
-      foregroundNotificationConfig: const ForegroundNotificationConfig(
-        notificationText: "Tourvia is tracking your location for safety monitoring.",
-        notificationTitle: "Live Location Sharing Active",
-        enableWakeLock: true,
-      ),
+    if (sessionId.isEmpty || userId.isEmpty) return null;
+
+    // 1. Immediately push current position so doc is created right away
+    pushCurrentLocation(
+      sessionId: sessionId,
+      userId: userId,
+      userName: userName,
+      isGuide: isGuide,
     );
 
-    return Geolocator.getPositionStream(locationSettings: locationSettings)
-        .listen((Position position) async {
+    // 2. Configure platform-appropriate location settings
+    final LocationSettings locationSettings;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      locationSettings = const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 2,
+      );
+    } else {
+      locationSettings = AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 2,
+        intervalDuration: const Duration(seconds: 5),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationText:
+              "Tourvia is tracking your location for safety monitoring.",
+          notificationTitle: "Live Location Sharing Active",
+          enableWakeLock: true,
+        ),
+      );
+    }
+
+    final streamSub = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
+    ).listen((Position position) async {
+      final locData = {
+        'userId': userId,
+        'userName': userName,
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'accuracy': position.accuracy,
+        'isGuide': isGuide,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
       try {
-        await _locCol(sessionId).doc(userId).set({
-          'userId': userId,
-          'userName': userName,
-          'latitude': position.latitude,
-          'longitude': position.longitude,
-          'accuracy': position.accuracy,
-          'isGuide': isGuide,
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      } catch (_) {
-        // Silent – stream must remain stable
-      }
+        await _locCol(sessionId).doc(userId).set(locData, SetOptions(merge: true));
+      } catch (_) {}
+      try {
+        await _legacyLocCol(sessionId).doc(userId).set(locData, SetOptions(merge: true));
+      } catch (_) {}
     });
+
+    // 3. Periodic fallback timer (every 15s) so stationary devices stay refreshed
+    final timer = Timer.periodic(const Duration(seconds: 15), (_) {
+      pushCurrentLocation(
+        sessionId: sessionId,
+        userId: userId,
+        userName: userName,
+        isGuide: isGuide,
+      );
+    });
+
+    return _PublishingSubscriptionWrapper(streamSub, timer);
   }
 
   /// Retrieves a real-time stream of all user locations in a tour session.
+  /// Merges both /tours/{sessionId}/locations and legacy /tour_sessions/{sessionId}/locations.
   static Stream<List<UserLocation>> watchAllLocations(String sessionId) {
+    if (sessionId.isEmpty) return Stream.value([]);
     return _locCol(sessionId)
         .snapshots()
-        .map((snap) => snap.docs
-            .map((doc) => UserLocation.fromFirestore(doc.id, doc.data()))
-            .toList());
+        .asyncMap((snap) async {
+      final map = <String, UserLocation>{};
+      for (final doc in snap.docs) {
+        map[doc.id] = UserLocation.fromFirestore(doc.id, doc.data());
+      }
+      try {
+        final legSnap = await _legacyLocCol(sessionId).get();
+        for (final doc in legSnap.docs) {
+          if (!map.containsKey(doc.id)) {
+            map[doc.id] = UserLocation.fromFirestore(doc.id, doc.data());
+          }
+        }
+      } catch (_) {}
+      return map.values.toList();
+    });
   }
 
   /// Set the ring command status for a specific tourist to true.
   /// Also writes a server-side [ringCommandAt] timestamp so the tourist
   /// can ignore stale rings that pre-date their current tracking session.
   static Future<void> triggerRing(String sessionId, String touristId) async {
-    await _locCol(sessionId).doc(touristId).update({
+    final ringData = {
       'ringCommand': true,
       'ringCommandAt': FieldValue.serverTimestamp(),
-    });
+    };
+    try {
+      await _locCol(sessionId).doc(touristId).update(ringData);
+    } catch (_) {}
+    try {
+      await _legacyLocCol(sessionId).doc(touristId).update(ringData);
+    } catch (_) {}
   }
 
   /// Listens to a tourist's specific location doc for remote alerts (Ring command).
@@ -171,10 +257,16 @@ class LocationService {
       onRingTriggered();
 
       // Reset command immediately in Firestore
-      await _locCol(sessionId).doc(touristId).update({
+      final resetData = {
         'ringCommand': false,
         'ringCommandAt': null,
-      });
+      };
+      try {
+        await _locCol(sessionId).doc(touristId).update(resetData);
+      } catch (_) {}
+      try {
+        await _legacyLocCol(sessionId).doc(touristId).update(resetData);
+      } catch (_) {}
     });
   }
 
@@ -310,3 +402,41 @@ class LocationService {
     }
   }
 }
+
+/// Custom subscription wrapper that disposes a periodic heartbeat timer
+/// when the underlying location stream subscription is cancelled.
+class _PublishingSubscriptionWrapper implements StreamSubscription<Position> {
+  final StreamSubscription<Position> _inner;
+  final Timer? _timer;
+
+  _PublishingSubscriptionWrapper(this._inner, this._timer);
+
+  @override
+  Future<void> cancel() async {
+    _timer?.cancel();
+    return _inner.cancel();
+  }
+
+  @override
+  void onData(void Function(Position data)? handleData) =>
+      _inner.onData(handleData);
+
+  @override
+  void onError(Function? handleError) => _inner.onError(handleError);
+
+  @override
+  void onDone(void Function()? handleDone) => _inner.onDone(handleDone);
+
+  @override
+  void pause([Future<void>? resumeSignal]) => _inner.pause(resumeSignal);
+
+  @override
+  void resume() => _inner.resume();
+
+  @override
+  bool get isPaused => _inner.isPaused;
+
+  @override
+  Future<E> asFuture<E>([E? futureValue]) => _inner.asFuture(futureValue);
+}
+

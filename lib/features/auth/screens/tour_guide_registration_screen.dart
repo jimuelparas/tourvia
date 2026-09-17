@@ -8,7 +8,9 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/gemini_vision_service.dart';
 import '../../../core/services/lockout_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/google_logo.dart';
 import '../widgets/custom_text_field.dart';
+import 'complete_profile_screen.dart';
 import 'registration_success_screen.dart';
 import 'tour_guide_login_screen.dart';
 
@@ -35,7 +37,9 @@ class _TourGuideRegistrationScreenState
   final _firstNameCtrl = TextEditingController();
   final _middleNameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
-  final _ageCtrl = TextEditingController();
+  // Birthday state (Steps 1-5) — replaces age text input
+  DateTime? _selectedBirthday;
+  int? _calculatedAge;
   final _emailCtrl = TextEditingController();
   final _contactCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
@@ -43,6 +47,9 @@ class _TourGuideRegistrationScreenState
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmPasswordCtrl = TextEditingController();
+
+  // ID Type state (Step 8)
+  String? _selectedIdType;
 
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
@@ -121,7 +128,6 @@ class _TourGuideRegistrationScreenState
     _firstNameCtrl.dispose();
     _middleNameCtrl.dispose();
     _lastNameCtrl.dispose();
-    _ageCtrl.dispose();
     _emailCtrl.dispose();
     _contactCtrl.dispose();
     _addressCtrl.dispose();
@@ -146,19 +152,45 @@ class _TourGuideRegistrationScreenState
     return null;
   }
 
-  String? _ageValidator(String? value) {
-    if (value == null || value.trim().isEmpty) return AppStrings.fieldRequired;
-    final age = int.tryParse(value.trim());
-    if (age == null || age < 18 || age > 100) return AppStrings.invalidAge;
+  // Step 1/4: Birthday validator — enforces 18+ rule
+  String? _birthdayValidator() {
+    if (_selectedBirthday == null) return AppStrings.birthdayRequired;
+    if ((_calculatedAge ?? 0) < 18) return AppStrings.ageTooYoung;
     return null;
   }
 
+  // Step 2: Auto age calculation from birthday
+  int _calculateAge(DateTime birthDate) {
+    final today = DateTime.now();
+    int age = today.year - birthDate.year;
+    if (today.month < birthDate.month ||
+        (today.month == birthDate.month && today.day < birthDate.day)) {
+      age--;
+    }
+    return age;
+  }
+
+  // Step 17: Granular Philippine phone validator
   String? _phoneValidator(String? value) {
-    if (value == null || value.trim().isEmpty) return AppStrings.fieldRequired;
-    // Accept Philippine numbers: 09XX, +639XX, or formatted versions
-    final phoneRegex = RegExp(r'^(\+?63|0)\d{10}$');
-    final cleaned = value.replaceAll(RegExp(r'[\s\-()]'), '');
-    if (!phoneRegex.hasMatch(cleaned)) return AppStrings.invalidPhone;
+    if (value == null || value.trim().isEmpty) return AppStrings.phoneRequired;
+    final raw = value.trim();
+    // Check for invalid characters (only digits and a leading +)
+    if (!RegExp(r'^\+?[0-9]+$').hasMatch(raw)) {
+      return AppStrings.phoneInvalidChars;
+    }
+    // Normalize: strip +63 prefix to check digit count
+    String digits = raw;
+    if (digits.startsWith('+63')) {
+      digits = '0${digits.substring(3)}';
+    }
+    // Check prefix
+    if (!digits.startsWith('09') && !raw.startsWith('+639')) {
+      return AppStrings.phoneInvalidPrefix;
+    }
+    // Length checks (normalized to 09 format for digit counting)
+    final normalizedLen = digits.length;
+    if (normalizedLen < 11) return AppStrings.phoneTooShort;
+    if (normalizedLen > 11) return AppStrings.phoneTooLong;
     return null;
   }
 
@@ -222,19 +254,28 @@ class _TourGuideRegistrationScreenState
 
     if (!_formKey.currentState!.validate()) return;
 
+    // Step 4: Extra birthday validation (not handled by Form validators since it's a date field)
+    final birthdayError = _birthdayValidator();
+    if (birthdayError != null) {
+      _showError(birthdayError);
+      return;
+    }
+
+    // ID Type and photo are optional (Barangay ID or DOT ID)
     setState(() {
       _isSubmitting = true;
       _isVerifying = _selectedIdImageBytes != null;
     });
 
     try {
-      String status = 'approved'; // Default if no ID photo
+      String status = 'approved';
 
-      // Step 1: If ID photo is provided, verify with Gemini Vision AI
+      // Step 1/9: If ID photo is provided, verify with Gemini Vision AI passing idType
       if (_selectedIdImageBytes != null) {
         final mimeType = _selectedIdImage?.mimeType ?? 'image/jpeg';
         final result = await GeminiVisionService.verifyTourGuideId(
           _selectedIdImageBytes!,
+          idType: _selectedIdType ?? 'Philippine Government ID',
           mimeType: mimeType,
         );
 
@@ -259,19 +300,21 @@ class _TourGuideRegistrationScreenState
           return;
         }
 
-        status = 'approved'; // Auto-approved via AI verification
+        status = 'approved';
       }
 
-      // Step 2: Register
+      // Steps 2, 5, 18: Register with birthDate + age + idType (phone normalized in auth_service)
       await AuthService.registerTourGuide(
         firstName: _firstNameCtrl.text,
         middleName: _middleNameCtrl.text,
         lastName: _lastNameCtrl.text,
-        age: int.parse(_ageCtrl.text.trim()),
+        age: _calculatedAge!,
+        birthDate: _selectedBirthday!,
         email: _emailCtrl.text,
         contactNumber: _contactCtrl.text,
         address: _addressCtrl.text,
         tourGuideId: _tourGuideIdCtrl.text,
+        idType: _selectedIdType ?? '',
         username: _usernameCtrl.text,
         password: _passwordCtrl.text,
         status: status,
@@ -523,7 +566,12 @@ class _TourGuideRegistrationScreenState
                     sliver: SliverList(
                       delegate: SliverChildListDelegate([
                         _buildHeader(),
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 24),
+                        // Step 10: Google Sign-In button
+                        _buildGoogleSignInButton(),
+                        const SizedBox(height: 20),
+                        _buildOrDivider(),
+                        const SizedBox(height: 20),
                         _buildForm(),
                         const SizedBox(height: 28),
                         _buildSubmitButton(),
@@ -539,6 +587,89 @@ class _TourGuideRegistrationScreenState
         ),
       ),
     );
+  }
+
+  // ── Google Sign-In Button (Step 10) ────────────────────
+
+  Widget _buildGoogleSignInButton() {
+    return OutlinedButton(
+      onPressed: _isSubmitting ? null : _onGoogleSignIn,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        backgroundColor: Colors.white.withValues(alpha: 0.05),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const GoogleLogo(size: 20),
+          const SizedBox(width: 12),
+          Text(
+            AppStrings.continueWithGoogle,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrDivider() {
+    return Row(
+      children: [
+        const Expanded(child: Divider()),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            AppStrings.orDivider,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        const Expanded(child: Divider()),
+      ],
+    );
+  }
+
+  // Step 10: Google sign-in handler for registration screen
+  Future<void> _onGoogleSignIn() async {
+    setState(() => _isSubmitting = true);
+    try {
+      final result = await AuthService.signInWithGoogle();
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+
+      if (result['isNewOrIncomplete'] == true) {
+        // Step 12/13: Route to Complete Profile screen (Dashboard still locked)
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => CompleteProfileScreen(
+              uid: result['uid'] as String,
+              email: result['email'] as String,
+              firstName: result['firstName'] as String,
+              lastName: result['lastName'] as String,
+              photoUrl: result['photoUrl'] as String,
+            ),
+            transitionsBuilder: (_, animation, __, child) =>
+                FadeTransition(opacity: animation, child: child),
+            transitionDuration: const Duration(milliseconds: 300),
+          ),
+        );
+      }
+      // If complete → AuthService.signInWithGoogle already signed them in → root will route to Dashboard
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      _showError(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      _showError(AppStrings.googleSignInError);
+    }
   }
 
   // ── Header ──────────────────────────────────────────────
@@ -584,13 +715,22 @@ class _TourGuideRegistrationScreenState
 
   // ── Form ────────────────────────────────────────────────
 
+  // ── ID Photo Upload (Steps 7, 8) ─────────────────────────
+
   Widget _buildIdPhotoUpload() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Tour Guide ID Photo (Optional)',
+          AppStrings.idPhotoLabel,
           style: Theme.of(context).textTheme.labelMedium,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Upload a clear photo of your selected ID.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AppColors.textSecondary,
+          ),
         ),
         const SizedBox(height: 8),
         InkWell(
@@ -639,11 +779,16 @@ class _TourGuideRegistrationScreenState
                       fit: BoxFit.cover,
                     ),
                   )
-                : const Column(
+                : Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.add_a_photo, color: AppColors.primary),
-                      Text('Upload ID Photo'),
+                      Icon(Icons.add_a_photo,
+                          color: AppColors.primary.withValues(alpha: 0.7)),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Tap to upload your ID photo',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                     ],
                   ),
           ),
@@ -673,7 +818,7 @@ class _TourGuideRegistrationScreenState
           // Middle Name (Optional)
           CustomTextField(
             controller: _middleNameCtrl,
-            label: '${AppStrings.middleName} (Optional)',
+            label: '${AppStrings.middleName} (if applicable)',
             hint: AppStrings.middleNameHint,
             helperText: 'Enter your middle name',
             prefixIcon: Icons.person_outline_rounded,
@@ -695,22 +840,15 @@ class _TourGuideRegistrationScreenState
           ),
           const SizedBox(height: 18),
 
-          // Age
-          CustomTextField(
-            controller: _ageCtrl,
-            label: AppStrings.age,
-            hint: AppStrings.ageHint,
-            helperText: 'Must be 18 years or older',
-            prefixIcon: Icons.cake_outlined,
-            keyboardType: TextInputType.number,
-            textInputAction: TextInputAction.next,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(3),
-            ],
-            validator: _ageValidator,
-          ),
+          // Step 1: Birthday / Date of Birth date picker
+          _buildBirthdayPicker(),
           const SizedBox(height: 18),
+
+          // Step 3: Auto-calculated age badge (read-only)
+          if (_calculatedAge != null) ...[
+            _buildAgeBadge(),
+            const SizedBox(height: 18),
+          ],
 
           // Email
           CustomTextField(
@@ -725,12 +863,12 @@ class _TourGuideRegistrationScreenState
           ),
           const SizedBox(height: 18),
 
-          // Contact Number
+          // Contact Number (Step 17)
           CustomTextField(
             controller: _contactCtrl,
             label: AppStrings.contactNumber,
             hint: AppStrings.contactNumberHint,
-            helperText: 'Philippine format: +63 or 09...',
+            helperText: 'Philippine format: +639... or 09...',
             prefixIcon: Icons.phone_outlined,
             keyboardType: TextInputType.phone,
             textInputAction: TextInputAction.next,
@@ -738,30 +876,24 @@ class _TourGuideRegistrationScreenState
           ),
           const SizedBox(height: 18),
 
-          // Address (Optional)
+          // Step 6: Address — strictly required
           CustomTextField(
             controller: _addressCtrl,
-            label: '${AppStrings.address} (Optional)',
+            label: AppStrings.address,
             hint: AppStrings.addressHint,
-            helperText: 'Enter your current address',
+            helperText: 'Enter your complete address',
             prefixIcon: Icons.location_on_outlined,
             keyboardType: TextInputType.streetAddress,
             textInputAction: TextInputAction.next,
+            validator: _requiredValidator,
           ),
           const SizedBox(height: 18),
 
-          // DOT Tour Guide ID (Optional)
-          CustomTextField(
-            controller: _tourGuideIdCtrl,
-            label: '${AppStrings.tourGuideId} (Optional)',
-            hint: AppStrings.tourGuideIdHint,
-            helperText: 'Enter your DOT ID number',
-            prefixIcon: Icons.badge_outlined,
-            textInputAction: TextInputAction.next,
-          ),
+          // Step 8: ID Type Dropdown
+          _buildIdTypeDropdown(),
           const SizedBox(height: 18),
 
-          // DOT Tour Guide ID Photo Upload (Optional)
+          // ID Photo Upload (Step 7)
           _buildIdPhotoUpload(),
           const SizedBox(height: 18),
 
@@ -826,6 +958,169 @@ class _TourGuideRegistrationScreenState
           ),
         ],
       ),
+    );
+  }
+
+  // Step 1: Birthday date picker widget
+  Widget _buildBirthdayPicker() {
+    final maxDate = DateTime(
+      DateTime.now().year - 18,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          AppStrings.birthday,
+          style: Theme.of(context).textTheme.labelMedium,
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () async {
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: _selectedBirthday ?? maxDate,
+              firstDate: DateTime(1920),
+              lastDate: DateTime.now(),
+              helpText: 'Select Birthday',
+            );
+            if (picked != null) {
+              setState(() {
+                _selectedBirthday = picked;
+                _calculatedAge = _calculateAge(picked);
+              });
+            }
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _selectedBirthday == null
+                    ? AppColors.primary.withValues(alpha: 0.3)
+                    : AppColors.primary.withValues(alpha: 0.6),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.cake_outlined,
+                    color: AppColors.primary, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _selectedBirthday != null
+                        ? '${_selectedBirthday!.day.toString().padLeft(2, '0')} / '
+                            '${_selectedBirthday!.month.toString().padLeft(2, '0')} / '
+                            '${_selectedBirthday!.year}'
+                        : AppStrings.birthdayHint,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: _selectedBirthday != null
+                          ? AppColors.textPrimary
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.calendar_month_outlined,
+                    color: AppColors.textSecondary, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Step 3: Read-only age badge
+  Widget _buildAgeBadge() {
+    final isUnder18 = (_calculatedAge ?? 0) < 18;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: isUnder18
+            ? AppColors.error.withValues(alpha: 0.08)
+            : AppColors.success.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isUnder18
+              ? AppColors.error.withValues(alpha: 0.3)
+              : AppColors.success.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isUnder18
+                ? Icons.error_outline_rounded
+                : Icons.check_circle_outline_rounded,
+            color: isUnder18 ? AppColors.error : AppColors.success,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            isUnder18
+                ? '${AppStrings.calculatedAge}: $_calculatedAge ${AppStrings.ageDisplay} — ${AppStrings.ageTooYoung}'
+                : '${AppStrings.calculatedAge}: $_calculatedAge ${AppStrings.ageDisplay}',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: isUnder18 ? AppColors.error : AppColors.success,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Step 8: ID Type dropdown
+  Widget _buildIdTypeDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          AppStrings.idTypeLabel,
+          style: Theme.of(context).textTheme.labelMedium,
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _selectedIdType == null
+                  ? AppColors.primary.withValues(alpha: 0.3)
+                  : AppColors.primary.withValues(alpha: 0.6),
+            ),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: _selectedIdType,
+              hint: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  AppStrings.idTypeHint,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              borderRadius: BorderRadius.circular(12),
+              items: AppStrings.validIdTypes
+                  .map(
+                    (type) => DropdownMenuItem<String>(
+                      value: type,
+                      child: Text(type),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (val) => setState(() => _selectedIdType = val),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

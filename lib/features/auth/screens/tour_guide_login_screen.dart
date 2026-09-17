@@ -6,8 +6,10 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/lockout_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/google_logo.dart';
 import '../../tour_guide/screens/tour_guide_dashboard_screen.dart';
 import '../widgets/custom_text_field.dart';
+import 'complete_profile_screen.dart';
 import 'forgot_password_screen.dart';
 import 'tour_guide_registration_screen.dart';
 
@@ -157,6 +159,55 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
     }
   }
 
+  // Step 10: Google Sign-In handler for login screen
+  // Steps 12, 14, 15, 16 — Strict flow + route guard
+  Future<void> _onGoogleSignIn() async {
+    setState(() {
+      _isSubmitting = true;
+      _loginError = null;
+    });
+    try {
+      final result = await AuthService.signInWithGoogle();
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+
+      if (result['isNewOrIncomplete'] == true) {
+        // Step 12/13: Incomplete Google user — intercept, route to Complete Profile
+        // Dashboard is still locked until profile is complete (Step 14)
+        Navigator.of(context).pushAndRemoveUntil(
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => CompleteProfileScreen(
+              uid: result['uid'] as String,
+              email: result['email'] as String,
+              firstName: result['firstName'] as String,
+              lastName: result['lastName'] as String,
+              photoUrl: result['photoUrl'] as String,
+            ),
+            transitionsBuilder: (_, animation, __, child) =>
+                FadeTransition(opacity: animation, child: child),
+            transitionDuration: const Duration(milliseconds: 300),
+          ),
+          (route) => false,
+        );
+      } else {
+        // Step 16: Returning complete Google user — go directly to Dashboard
+        _showSuccessAndNavigate();
+      }
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isSubmitting = false;
+        _loginError = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isSubmitting = false;
+        _loginError = AppStrings.googleSignInError;
+      });
+    }
+  }
+
   Future<void> _handleLoginFailure(String baseMessage) async {
     final status = await LockoutService.recordFailure(LockoutType.guideLogin);
     if (!mounted) return;
@@ -237,7 +288,12 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
                     sliver: SliverList(
                       delegate: SliverChildListDelegate([
                         _buildHeader(),
-                        const SizedBox(height: 40),
+                        const SizedBox(height: 32),
+                        // Step 10: Google Sign-In button on login screen
+                        _buildGoogleSignInButton(),
+                        const SizedBox(height: 20),
+                        _buildOrDivider(),
+                        const SizedBox(height: 20),
                         if (_loginError != null) ...[
                           _buildErrorBanner(),
                           const SizedBox(height: 20),
@@ -258,6 +314,53 @@ class _TourGuideLoginScreenState extends State<TourGuideLoginScreen>
           ),
         ),
       ),
+    );
+  }
+
+  // ── Google Sign-In Button (Step 10) ────────────────────
+
+  Widget _buildGoogleSignInButton() {
+    final isLocked = _lockoutStatus?.isLocked ?? false;
+    return OutlinedButton(
+      onPressed: (_isSubmitting || isLocked) ? null : _onGoogleSignIn,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.4)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        backgroundColor: Colors.white.withValues(alpha: 0.05),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const GoogleLogo(size: 20),
+          const SizedBox(width: 12),
+          Text(
+            AppStrings.continueWithGoogle,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrDivider() {
+    return Row(
+      children: [
+        const Expanded(child: Divider()),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            AppStrings.orDivider,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        const Expanded(child: Divider()),
+      ],
     );
   }
 

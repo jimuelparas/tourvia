@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -88,6 +87,22 @@ class DailyForecast {
   });
 }
 
+// ── Exceptions ──────────────────────────────────────────────────
+
+class LocationServiceDisabledException implements Exception {
+  final String message;
+  const LocationServiceDisabledException([this.message = 'Location service is unavailable.']);
+  @override
+  String toString() => message;
+}
+
+class LocationPermissionDeniedException implements Exception {
+  final String message;
+  const LocationPermissionDeniedException([this.message = 'Enable location to view local weather.']);
+  @override
+  String toString() => message;
+}
+
 // ── Service ─────────────────────────────────────────────────────
 
 /// Fully live weather service backed by OpenWeatherMap free-tier APIs:
@@ -118,6 +133,33 @@ class WeatherService {
     }
   }
 
+  /// Outline icons for sleek dashboard panel
+  static IconData mapOutlineIcon(String iconCode) {
+    final isNight = iconCode.endsWith('n');
+    final code = iconCode.replaceAll('n', 'd');
+    switch (code) {
+      case '01d':
+        return isNight ? Icons.nightlight_outlined : Icons.wb_sunny_outlined;
+      case '02d':
+        return isNight ? Icons.nights_stay_outlined : Icons.cloud_outlined;
+      case '03d':
+      case '04d':
+        return Icons.cloud_outlined;
+      case '09d':
+        return Icons.water_drop_outlined;
+      case '10d':
+        return Icons.umbrella_outlined;
+      case '11d':
+        return Icons.thunderstorm_outlined;
+      case '13d':
+        return Icons.ac_unit_rounded;
+      case '50d':
+        return Icons.filter_drama_outlined;
+      default:
+        return Icons.cloud_outlined;
+    }
+  }
+
   /// Full OWM PNG icon URL (2x = 100×100).
   static String iconUrl(String iconCode) =>
       'https://openweathermap.org/img/wn/$iconCode@2x.png';
@@ -144,52 +186,53 @@ class WeatherService {
     );
   }
 
+  // ── Cache for current location weather ────────────────────────
+  static WeatherInfo? _cachedWeather;
+  static double? _cachedLat;
+  static double? _cachedLng;
+  static DateTime? _lastFetchTime;
+
   // ── Location helper ─────────────────────────────────────────
 
-  /// Gets real GPS on mobile; uses browser Geolocation API on web.
-  static Future<({double lat, double lng})?> getDevicePosition() async {
+  /// Gets the user's current GPS position via [Geolocator].
+  /// Throws [LocationServiceDisabledException] if GPS/location service is disabled.
+  /// Throws [LocationPermissionDeniedException] if permission is not granted.
+  static Future<({double lat, double lng})> getCurrentDevicePosition() async {
+    // 1. Check if location service is enabled
+    bool serviceEnabled;
     try {
-      if (kIsWeb) {
-        return await _getWebPosition();
-      }
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        return null;
-      }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.low,
-          timeLimit: Duration(seconds: 10),
-        ),
-      );
-      return (lat: pos.latitude, lng: pos.longitude);
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
     } catch (_) {
-      return null;
+      serviceEnabled = true;
     }
+    if (!serviceEnabled) {
+      throw const LocationServiceDisabledException();
+    }
+
+    // 2. Check and request location permission
+    LocationPermission perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
+    }
+    if (perm == LocationPermission.denied ||
+        perm == LocationPermission.deniedForever) {
+      throw const LocationPermissionDeniedException();
+    }
+
+    // 3. Get device position
+    final pos = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.medium,
+        timeLimit: Duration(seconds: 12),
+      ),
+    );
+    return (lat: pos.latitude, lng: pos.longitude);
   }
 
-  /// Browser Geolocation via Geolocator (works on Flutter Web too).
-  static Future<({double lat, double lng})?> _getWebPosition() async {
+  /// Legacy helper returning null on failure (for tracking / map)
+  static Future<({double lat, double lng})?> getDevicePosition() async {
     try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        return null;
-      }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.low,
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
-      return (lat: pos.latitude, lng: pos.longitude);
+      return await getCurrentDevicePosition();
     } catch (_) {
       return null;
     }
@@ -229,7 +272,32 @@ class WeatherService {
     }
     final cur = json.decode(curResp.body) as Map<String, dynamic>;
 
-    final city = cityName ?? (cur['name'] as String? ?? 'Unknown');
+    String city = (cityName != null && cityName.isNotEmpty)
+        ? cityName
+        : (cur['name'] as String? ?? '').trim();
+
+    // If city name is empty or unknown, reverse-geocode via OpenWeatherMap geo API
+    if (city.isEmpty || city.toLowerCase() == 'unknown') {
+      try {
+        final revUri = Uri.parse(
+            '$_geoUrl/reverse?lat=$lat&lon=$lng&limit=1&appid=$_apiKey');
+        final revResp = await http.get(revUri);
+        if (revResp.statusCode == 200) {
+          final list = json.decode(revResp.body) as List;
+          if (list.isNotEmpty) {
+            final first = list.first as Map<String, dynamic>;
+            final revCity = (first['name'] as String? ?? '').trim();
+            if (revCity.isNotEmpty) {
+              city = revCity;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    if (city.isEmpty) {
+      city = 'Current Location';
+    }
+
     final countryCode = (cur['sys']?['country'] as String?) ?? 'PH';
     final timezoneOffset = cur['timezone'] as int? ?? 28800;
 
@@ -379,27 +447,51 @@ class WeatherService {
     );
   }
 
-  // ── Convenience: auto-detect GPS ────────────────────────────
+  // ── Convenience: GPS weather with caching ────────────────────
 
-  /// Fetches weather using device GPS; falls back to Manila if unavailable.
+  /// Fetches weather using the user's current GPS location.
+  /// If [latitude] and [longitude] are provided, fetches for those coordinates.
+  /// Otherwise, retrieves the device's physical GPS location.
+  /// Throws [LocationServiceDisabledException] or [LocationPermissionDeniedException]
+  /// if location is unavailable or denied.
   static Future<WeatherInfo> fetchWeather({
     double? latitude,
     double? longitude,
     String? locationName,
+    bool forceRefresh = false,
   }) async {
-    double lat = latitude ?? 14.5995;
-    double lng = longitude ?? 120.9842;
-    String? city = locationName;
+    if (latitude != null && longitude != null) {
+      return fetchByCoords(lat: latitude, lng: longitude, cityName: locationName);
+    }
 
-    if (latitude == null && longitude == null) {
-      final pos = await getDevicePosition();
-      if (pos != null) {
-        lat = pos.lat;
-        lng = pos.lng;
+    // Must use user's physical GPS location
+    final pos = await getCurrentDevicePosition();
+
+    final now = DateTime.now();
+    if (!forceRefresh &&
+        _cachedWeather != null &&
+        _lastFetchTime != null &&
+        _cachedLat != null &&
+        _cachedLng != null &&
+        now.difference(_lastFetchTime!).inMinutes < 10) {
+      final dist = Geolocator.distanceBetween(
+          _cachedLat!, _cachedLng!, pos.lat, pos.lng);
+      if (dist < 1000) {
+        return _cachedWeather!;
       }
     }
 
-    return fetchByCoords(lat: lat, lng: lng, cityName: city);
+    final info = await fetchByCoords(
+      lat: pos.lat,
+      lng: pos.lng,
+      cityName: locationName,
+    );
+
+    _cachedWeather = info;
+    _cachedLat = pos.lat;
+    _cachedLng = pos.lng;
+    _lastFetchTime = now;
+    return info;
   }
 
   // ── City search suggestions ──────────────────────────────────

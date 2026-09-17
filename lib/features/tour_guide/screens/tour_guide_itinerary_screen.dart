@@ -1,25 +1,37 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
+import '../../../core/models/tour_model.dart';
+import '../../../core/services/attendance_service.dart';
 import '../../../core/services/itinerary_service.dart';
+import '../../../core/services/tour_service.dart';
 import '../../../core/services/tour_session_service.dart';
-import '../../../core/services/weather_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../itinerary/models/itinerary_item.dart';
-import '../../weather/screens/weather_screen.dart';
 import 'add_edit_itinerary_screen.dart';
+import 'tour_guide_home_screen.dart';
 import 'tour_guide_stop_attendance_screen.dart';
 
 /// Screen to view and manage the tour itinerary with OpenStreetMap integration.
 class TourGuideItineraryScreen extends StatefulWidget {
-  final String sessionId;
+  final String? sessionId;
+  final String? tourId;
 
   const TourGuideItineraryScreen({
     super.key,
-    required this.sessionId,
+    this.sessionId,
+    this.tourId,
   });
+
+  String get effectiveId {
+    if (tourId != null && tourId!.isNotEmpty) return tourId!;
+    if (sessionId != null && sessionId!.isNotEmpty) return sessionId!;
+    return '';
+  }
 
   @override
   State<TourGuideItineraryScreen> createState() =>
@@ -29,6 +41,29 @@ class TourGuideItineraryScreen extends StatefulWidget {
 class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
   final Set<String> _deletingIds = {};
   bool _fabExpanded = false;
+  Tour? _tour;
+  Timer? _clockTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTour();
+    // Periodically re-evaluate time-based status (upcoming -> ongoing -> completed)
+    _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _clockTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadTour() async {
+    final t = await TourService.getTour(widget.effectiveId);
+    if (mounted) setState(() => _tour = t);
+  }
 
   Future<void> _navigateToAddEdit({ItineraryItem? item}) async {
     setState(() => _fabExpanded = false);
@@ -36,7 +71,9 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
       MaterialPageRoute(
         builder: (_) => AddEditItineraryScreen(
           itemToEdit: item,
-          sessionId: widget.sessionId,
+          sessionId: widget.effectiveId,
+          tourStartDate: _tour?.startDate,
+          tourEndDate: _tour?.endDate,
         ),
       ),
     );
@@ -66,7 +103,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
 
     setState(() => _deletingIds.add(stop.id));
     try {
-      await ItineraryService.deleteStop(widget.sessionId, stop.id);
+      await ItineraryService.deleteStop(widget.effectiveId, stop.id);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -85,7 +122,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
 
     try {
       await ItineraryService.reorderStops(
-        widget.sessionId,
+        widget.effectiveId,
         reordered.map((s) => s.id).toList(),
       );
     } catch (_) {
@@ -102,7 +139,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
       MaterialPageRoute(
         builder: (_) => TourGuideStopAttendanceScreen(
           stop: stop,
-          sessionId: widget.sessionId,
+          sessionId: widget.effectiveId,
         ),
       ),
     );
@@ -133,7 +170,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     );
     if (confirmed != true || !mounted) return;
     try {
-      await ItineraryService.markStopDone(widget.sessionId, stop.id);
+      await ItineraryService.markStopDone(widget.effectiveId, stop.id);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -178,7 +215,6 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     );
 
     if (confirmed == true && mounted) {
-      // In a real app we'd archive data and show summary. For now, pop to dashboard.
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
@@ -186,13 +222,13 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<TourSession>(
-      stream: TourSessionService.watchSession(widget.sessionId),
+      stream: TourSessionService.watchSession(widget.effectiveId),
       builder: (context, sessionSnapshot) {
         final session = sessionSnapshot.data;
-        final tourName = session?.tourName ?? 'Tour Itinerary';
+        final tourName = _tour?.name ?? session?.tourName ?? 'Tour Itinerary';
 
         return StreamBuilder<List<ItineraryItem>>(
-          stream: ItineraryService.watchItinerary(widget.sessionId),
+          stream: ItineraryService.watchItinerary(widget.effectiveId),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -210,13 +246,25 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                 ),
-                leading: const BackButton(),
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  onPressed: () {
+                    if (Navigator.of(context).canPop()) {
+                      Navigator.of(context).pop();
+                    } else {
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                            builder: (_) => const TourGuideHomeScreen()),
+                        (route) => false,
+                      );
+                    }
+                  },
+                ),
               ),
               body: stops.isEmpty
                   ? _buildEmptyState()
                   : Column(
                       children: [
-                        _buildWeatherBanner(context, session),
                         _buildProgress(stops),
                         Expanded(child: _buildTimeline(stops)),
                       ],
@@ -266,88 +314,29 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     );
   }
 
-  Widget _buildWeatherBanner(BuildContext context, TourSession? session) {
-    double lat = 14.5995;
-    double lon = 120.9842;
-    String name = 'Manila, Philippines';
-
-    if (session != null) {
-      name = session.tourName;
-      if (name.toLowerCase().contains('baguio')) {
-        lat = 16.4023;
-        lon = 120.5960;
-      }
-    }
-
-    return FutureBuilder<WeatherInfo>(
-      future: WeatherService.fetchWeather(latitude: lat, longitude: lon, locationName: name),
-      builder: (context, snapshot) {
-        final info = snapshot.data;
-        final tempStr = info != null ? '${info.tempC.toStringAsFixed(0)}°C' : '28°C';
-        final descStr = info?.description ?? 'Partly Cloudy';
-        final locationStr = info?.locationName ?? name;
-        final rainStr = info != null ? 'Rain ${info.rainProbability}%' : 'Rain 65%';
-
-        return GestureDetector(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WeatherScreen())),
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.cloud_queue_rounded, color: Colors.white, size: 32),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      locationStr,
-                      style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$tempStr  •  $descStr',
-                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(rainStr, style: const TextStyle(color: Colors.white, fontSize: 11)),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildProgress(List<ItineraryItem> stops) {
-    final completed = stops.where((s) => s.status == ItineraryStatus.completed).length;
+    final completed =
+        stops.where((s) => s.effectiveStatus == ItineraryStatus.completed).length;
     final percent = stops.isEmpty ? 0.0 : completed / stops.length;
-    
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Tour Progress', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppColors.textSecondary)),
-              Text('$completed / ${stops.length} Stops Completed', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppColors.primary)),
+              const Text('Tour Progress',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      color: AppColors.textSecondary)),
+              Text('$completed / ${stops.length} Stops Completed',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      color: AppColors.primary)),
             ],
           ),
           const SizedBox(height: 8),
@@ -402,6 +391,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     final isFirst = index == 0;
     final isLast = index == stops.length - 1;
     final isDeleting = _deletingIds.contains(stop.id);
+    final currentStatus = stop.effectiveStatus;
 
     return IntrinsicHeight(
       key: ValueKey(stop.id),
@@ -416,11 +406,15 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: stop.status == ItineraryStatus.completed ? AppColors.success : AppColors.primary,
+                  color: currentStatus == ItineraryStatus.completed
+                      ? AppColors.success
+                      : (currentStatus == ItineraryStatus.ongoing
+                          ? const Color(0xFFF5A623)
+                          : AppColors.primary),
                   shape: BoxShape.circle,
                 ),
                 child: Center(
-                  child: stop.status == ItineraryStatus.completed
+                  child: currentStatus == ItineraryStatus.completed
                       ? const Icon(Icons.check, color: Colors.white, size: 16)
                       : Text('${index + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
@@ -460,7 +454,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                                     Expanded(
                                       child: Text(stop.destinationName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                     ),
-                                    _buildStatusBadge(stop.status),
+                                    _buildStatusBadge(currentStatus),
                                   ],
                                 ),
                                 const SizedBox(height: 6),
@@ -483,12 +477,31 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                                   ),
                                 ],
                                 const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.people_alt_rounded, size: 14, color: AppColors.primary),
-                                    const SizedBox(width: 4),
-                                    Text('${stop.presentCount} / ${stop.totalPassengers} Present', style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
-                                  ],
+                                StreamBuilder<({int presentCount, int totalCount})>(
+                                  stream: AttendanceService.watchStopAttendanceSummary(
+                                    widget.effectiveId,
+                                    stop.id,
+                                  ),
+                                  builder: (context, snap) {
+                                    final data = snap.data;
+                                    final present = data?.presentCount ?? 0;
+                                    final total = data?.totalCount ?? 0;
+                                    return Row(
+                                      children: [
+                                        const Icon(Icons.people_alt_rounded,
+                                            size: 14, color: AppColors.primary),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '$present / $total Present',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: AppColors.primary,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
                                 ),
                               ],
                             ),
@@ -506,25 +519,29 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                                 label: const Text('Attendance', style: TextStyle(fontSize: 12)),
                               ),
 
-                              IconButton(
-                                icon: const Icon(Icons.edit_rounded, size: 18),
-                                onPressed: () => _navigateToAddEdit(item: stop),
-                              ),
+                              // If completed: NO Edit, NO Delete, NO Done!
+                              if (currentStatus != ItineraryStatus.completed) ...[
+                                IconButton(
+                                  icon: const Icon(Icons.edit_rounded, size: 18),
+                                  onPressed: () => _navigateToAddEdit(item: stop),
+                                  tooltip: 'Edit Stop',
+                                ),
 
-                              // Delete button — removes stop with confirmation dialog
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.error),
-                                onPressed: isDeleting ? null : () => _deleteStop(stop),
-                                tooltip: 'Delete Stop',
-                              ),
+                                // Delete allowed only for upcoming stops (destructive changes restricted for ongoing)
+                                if (currentStatus == ItineraryStatus.upcoming)
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.error),
+                                    onPressed: isDeleting ? null : () => _deleteStop(stop),
+                                    tooltip: 'Delete Stop',
+                                  ),
 
-                              // "Done" button — only shown when stop is not yet completed
-                              if (stop.status != ItineraryStatus.completed)
+                                // "Done" button — only shown when stop is not yet completed
                                 TextButton.icon(
                                   onPressed: isDeleting ? null : () => _markDone(stop),
                                   icon: const Icon(Icons.check_circle_outline_rounded, size: 18, color: AppColors.success),
                                   label: const Text('Done', style: TextStyle(fontSize: 12, color: AppColors.success)),
                                 ),
+                              ],
                             ],
                           ),
                         ],

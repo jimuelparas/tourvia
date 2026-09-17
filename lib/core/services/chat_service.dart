@@ -12,10 +12,17 @@ class ChatService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
   static final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  static CollectionReference<Map<String, dynamic>> _chatCol(String sessionId) {
+  static CollectionReference<Map<String, dynamic>> _chatCol(String tourId) {
+    return _db
+        .collection('tours')
+        .doc(tourId)
+        .collection('chat');
+  }
+
+  static CollectionReference<Map<String, dynamic>> _legacyChatCol(String tourId) {
     return _db
         .collection('tour_sessions')
-        .doc(sessionId)
+        .doc(tourId)
         .collection('chat');
   }
 
@@ -29,7 +36,7 @@ class ChatService {
     bool isMedia = false,
     String? mediaUrl,
   }) async {
-    await _chatCol(sessionId).add({
+    final data = {
       'senderId': senderId,
       'senderName': senderName,
       'text': text,
@@ -37,7 +44,12 @@ class ChatService {
       'isMedia': isMedia,
       'mediaUrl': mediaUrl,
       'timestamp': FieldValue.serverTimestamp(),
-    });
+    };
+
+    final docRef = await _chatCol(sessionId).add(data);
+    try {
+      await _legacyChatCol(sessionId).doc(docRef.id).set(data);
+    } catch (_) {}
   }
 
   /// Deletes a message from the group chat.
@@ -48,8 +60,13 @@ class ChatService {
     required String messageId,
     String? mediaUrl,
   }) async {
-    // Delete the Firestore document
-    await _chatCol(sessionId).doc(messageId).delete();
+    // Delete from primary and legacy
+    try {
+      await _chatCol(sessionId).doc(messageId).delete();
+    } catch (_) {}
+    try {
+      await _legacyChatCol(sessionId).doc(messageId).delete();
+    } catch (_) {}
 
     // Delete the media file from Storage if present
     if (mediaUrl != null && mediaUrl.isNotEmpty) {
@@ -125,27 +142,41 @@ class ChatService {
     return await ref.getDownloadURL();
   }
 
-  /// Returns a real-time stream of all chat messages in [sessionId],
+  /// Returns a real-time stream of all chat messages in [tourId],
   /// ordered by timestamp ascending.
-  static Stream<List<ChatMessage>> watchMessages(String sessionId) {
-    return _chatCol(sessionId)
+  static Stream<List<ChatMessage>> watchMessages(String tourId) {
+    return _chatCol(tourId)
         .orderBy('timestamp', descending: false)
         .snapshots()
-        .map((snap) => snap.docs.map((doc) {
-              final data = doc.data();
-              // Parse timestamp safely (null for newly written docs before server sync)
-              final ts = (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
-              return ChatMessage(
-                id: doc.id,
-                senderId: data['senderId'] as String? ?? '',
-                senderName: data['senderName'] as String? ?? 'Anonymous',
-                text: data['text'] as String? ?? '',
-                timestamp: ts,
-                isGuide: data['isGuide'] as bool? ?? false,
-                isMedia: data['isMedia'] as bool? ?? false,
-                mediaUrl: data['mediaUrl'] as String?,
-              );
-            }).toList());
+        .asyncMap((snap) async {
+      if (snap.docs.isNotEmpty) {
+        return snap.docs.map((doc) => _fromDoc(doc)).toList();
+      }
+      try {
+        final legSnap = await _legacyChatCol(tourId)
+            .orderBy('timestamp', descending: false)
+            .get();
+        if (legSnap.docs.isNotEmpty) {
+          return legSnap.docs.map((doc) => _fromDoc(doc)).toList();
+        }
+      } catch (_) {}
+      return [];
+    });
+  }
+
+  static ChatMessage _fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    final ts = (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now();
+    return ChatMessage(
+      id: doc.id,
+      senderId: data['senderId'] as String? ?? '',
+      senderName: data['senderName'] as String? ?? 'Anonymous',
+      text: data['text'] as String? ?? '',
+      timestamp: ts,
+      isGuide: data['isGuide'] as bool? ?? false,
+      isMedia: data['isMedia'] as bool? ?? false,
+      mediaUrl: data['mediaUrl'] as String?,
+    );
   }
 }
 

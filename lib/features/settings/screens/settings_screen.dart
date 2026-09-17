@@ -63,12 +63,14 @@ class _SettingsScreenState extends State<SettingsScreen>
               final navigator = Navigator.of(context);
 
               // Perform real logout
-              SosNotificationService.instance.onLogout();
-              if (TouristSessionManager.isLoggedIn) {
-                await TouristSessionManager.clear();
-              } else if (AuthService.currentUser != null) {
-                await AuthService.signOut();
-              }
+              try {
+                SosNotificationService.instance.onLogout();
+                if (TouristSessionManager.isLoggedIn) {
+                  await TouristSessionManager.clear();
+                } else {
+                  await AuthService.signOut();
+                }
+              } catch (_) {}
 
               navigator.pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),

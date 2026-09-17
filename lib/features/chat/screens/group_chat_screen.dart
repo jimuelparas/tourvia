@@ -7,6 +7,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/models/tourist_session.dart';
 import '../../../core/services/chat_service.dart';
+import '../../../core/services/chat_badge_service.dart';
 import '../../../core/services/attendance_service.dart';
 import '../models/chat_message.dart';
 
@@ -16,11 +17,13 @@ import '../models/chat_message.dart';
 class GroupChatScreen extends StatefulWidget {
   final bool isCurrentUserGuide;
   final String sessionId;
+  final bool isReadOnly;
 
   const GroupChatScreen({
     super.key,
     this.isCurrentUserGuide = false,
     required this.sessionId,
+    this.isReadOnly = false,
   });
 
   @override
@@ -38,7 +41,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   double? _uploadProgress;
 
   @override
+  void initState() {
+    super.initState();
+    // Mark all messages as read when opening the chat screen
+    ChatBadgeService.updateLastRead(widget.sessionId, _senderId);
+  }
+
+  @override
   void dispose() {
+    // Also mark as read on dispose to catch messages received while chat was open
+    ChatBadgeService.updateLastRead(widget.sessionId, _senderId);
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -71,6 +83,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         text: text,
         isGuide: widget.isCurrentUserGuide,
       );
+      ChatBadgeService.updateLastRead(widget.sessionId, _senderId);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -118,6 +131,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         isMedia: true,
         mediaUrl: downloadUrl,
       );
+      ChatBadgeService.updateLastRead(widget.sessionId, _senderId);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -432,8 +446,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                   );
                 }
 
-                WidgetsBinding.instance
-                    .addPostFrameCallback((_) => _scrollToBottom());
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _scrollToBottom();
+                  ChatBadgeService.updateLastRead(widget.sessionId, _senderId);
+                });
 
                 final currentUserId = _senderId;
 
@@ -600,6 +616,34 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   // ── Input area ────────────────────────────────────────────────────────────
 
   Widget _buildInputArea() {
+    if (widget.isReadOnly) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: Border(top: BorderSide(color: AppColors.border)),
+        ),
+        child: SafeArea(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.lock_clock_rounded, size: 18, color: AppColors.textHint),
+              SizedBox(width: 8),
+              Text(
+                'Tour Completed — Group Chat is Read-Only',
+                style: TextStyle(
+                  color: AppColors.textHint,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(

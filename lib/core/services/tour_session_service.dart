@@ -52,22 +52,53 @@ class TourSessionService {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  /// Returns a stream of [TourSession] for a given [sessionId].
-  /// If the document doesn't exist, we return a default TourSession and
-  /// trigger an asynchronous write to create the document in Firestore.
+  /// Returns a stream of [TourSession] for a given [sessionId] (tourId).
+  /// Connects directly to /tours/{tourId} and falls back to /tour_sessions/{tourId}.
   static Stream<TourSession> watchSession(String sessionId) {
-    return _db.collection('tour_sessions').doc(sessionId).snapshots().map((doc) {
-      if (!doc.exists) {
-        // Asynchronously initialize the document so it is present in Firestore.
-        ensureSessionExists(sessionId);
+    return _db.collection('tours').doc(sessionId).snapshots().asyncMap((tourDoc) async {
+      if (tourDoc.exists && tourDoc.data() != null) {
+        final data = tourDoc.data()!;
+        final name = data['name'] as String? ?? 'Unnamed Tour';
+        final totalDays = (data['totalDays'] as num?)?.toInt() ?? 1;
+        final guideId = data['guideId'] as String?;
+        final guideName = data['guideName'] as String?;
+
+        DateTime parseDate(dynamic val) {
+          if (val is Timestamp) return val.toDate();
+          if (val is String) return DateTime.tryParse(val) ?? DateTime.now();
+          return DateTime.now();
+        }
+
+        final start = parseDate(data['startDate']);
+        final now = DateTime.now();
+        final startDay = DateTime(start.year, start.month, start.day);
+        final targetDay = DateTime(now.year, now.month, now.day);
+        final curDay = (targetDay.difference(startDay).inDays + 1).clamp(1, totalDays);
+
         return TourSession(
           sessionId: sessionId,
-          tourName: 'Unnamed Tour',
-          totalDays: 3,
-          currentDay: 1,
+          tourName: name,
+          totalDays: totalDays,
+          currentDay: curDay,
+          guideId: guideId,
+          guideName: guideName,
         );
       }
-      return TourSession.fromFirestore(doc.id, doc.data()!);
+
+      // Fallback to legacy /tour_sessions/{sessionId}
+      try {
+        final legDoc = await _db.collection('tour_sessions').doc(sessionId).get();
+        if (legDoc.exists && legDoc.data() != null) {
+          return TourSession.fromFirestore(legDoc.id, legDoc.data()!);
+        }
+      } catch (_) {}
+
+      return TourSession(
+        sessionId: sessionId,
+        tourName: 'Unnamed Tour',
+        totalDays: 1,
+        currentDay: 1,
+      );
     });
   }
 

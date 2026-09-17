@@ -31,15 +31,21 @@ class AppStrings {
   static const String lastNameHint = 'e.g. Dela Cruz';
   static const String fullName = 'Full Name';
   static const String fullNameHint = 'e.g. Juan Dela Cruz';
+  // Birthday / Date of Birth (replaces Age)
+  static const String birthday = 'Birthday / Date of Birth';
+  static const String birthdayHint = 'Tap to select your birthday';
+  static const String calculatedAge = 'Age';
+  static const String ageDisplay = 'years old';
   static const String age = 'Age';
   static const String ageHint = 'e.g. 28';
   static const String email = 'Email Address';
   static const String emailHint = 'e.g. juan@tourvia.ph';
   static const String contactNumber = 'Contact Number';
   static const String contactNumberHint = 'e.g. +63 912 345 6789';
-  static const String address = 'Address';
-  static const String addressHint = 'e.g. 123 Session Rd, Baguio City';
-  static const String tourGuideId = 'DOT Tour Guide ID';
+  static const String address = 'Complete Address *';
+  static const String addressHint =
+      'e.g. House No., Street, Barangay, City/Municipality, Province';
+  static const String tourGuideId = 'Tour Guide ID (Optional)';
   static const String tourGuideIdHint = 'e.g. TG-2026-0001';
   static const String username = 'Username';
   static const String usernameHint = 'Create a username';
@@ -50,16 +56,54 @@ class AppStrings {
   static const String registerButton = 'Submit Registration';
   static const String alreadyHaveAccount = 'Already have an account? ';
   static const String login = 'Log in';
+  // Google Sign-In
+  static const String continueWithGoogle = 'Continue with Google';
+  static const String orDivider = 'OR';
+  static const String googleSignInError =
+      'Google Sign-In failed. Please try again.';
+  static const String googleSignInCancelled = 'Google Sign-In was cancelled.';
+  // ID Verification
+  static const String idTypeLabel = 'ID Type (Optional)';
+  static const String idTypeHint = 'Select your ID type (Optional)';
+  static const String idPhotoLabel = 'Upload ID Photo (Optional)';
+  static const List<String> validIdTypes = [
+    'Barangay ID / Barangay Clearance',
+    'DOT Tour Guide Accreditation ID',
+  ];
+
+  // ── Complete Profile Screen (Google Sign-Up) ────────────
+  static const String completeProfileTitle = 'Complete Your Profile';
+  static const String completeProfileSubtitle =
+      'Please provide the remaining information to activate your account.';
+  static const String completeProfileNote =
+      'Your Google name and email have been pre-filled. '
+      'All other fields are required before you can access your dashboard.';
+  static const String saveProfileButton = 'Save & Continue';
 
   // ── Validation ──────────────────────────────────────────
   static const String fieldRequired = 'This field is required';
   static const String invalidEmail = 'Please enter a valid email address';
   static const String invalidAge = 'Please enter a valid age (18-100)';
+  static const String ageTooYoung =
+      'You must be at least 18 years old to register as a Tour Guide.';
+  static const String birthdayRequired = 'Please select your birthday.';
+  // Granular Philippine phone validation errors
+  static const String phoneRequired = 'Contact number is required.';
+  static const String phoneInvalidChars =
+      'Invalid characters. Only digits and a leading \'+\' are allowed.';
+  static const String phoneInvalidPrefix =
+      'Mobile number must start with 09 or +639.';
+  static const String phoneTooShort =
+      'Mobile number is too short. 11 digits required (e.g. 09123456789) '
+      'or 13 characters for +639 format.';
+  static const String phoneTooLong =
+      'Mobile number is too long. Please enter a valid 11-digit mobile number.';
   static const String invalidPhone =
-      'Please enter a valid Philippine phone number';
+      'Please enter a valid Philippine phone number (09XXXXXXXXX or +639XXXXXXXXX).';
   static const String passwordTooShort =
       'Password must be at least 8 characters';
   static const String passwordsDoNotMatch = 'Passwords do not match';
+
 
   // ── Registration Success ────────────────────────────────
   static const String successTitle = 'Registration Complete!';
@@ -222,4 +266,17 @@ class AppStrings {
   static const String routeToGuide = 'Route to Guide';
   static const String returnToBoundary =
       'Please return to the designated tour boundary immediately.';
+
+  // ── In-App Navigation (REV-003) ──────────────────────────
+  static const String startNavigation = 'Navigate';
+  static const String endNavigation = 'End Route';
+  static const String recenterMap = 'Recenter';
+  static const String etaLabel = 'ETA';
+  static const String headingTo = 'Heading to';
+  static const String routeToGuideLabel = 'Route to Guide';
+  static const String walkingMode = 'Walking';
+  static const String drivingMode = 'Driving';
+  static const String routeCalculating = 'Calculating route…';
+  static const String routeError =
+      'Could not calculate route. Please try again.';
 }

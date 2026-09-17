@@ -3,25 +3,79 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_strings.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/services/routing_service.dart';
+import '../../../core/services/tour_service.dart';
+import '../mixins/navigation_mixin.dart';
+
+/// Represents an approved tourist combined with their live location (REV-005).
+/// Tour membership is strictly separated from location availability.
+class TouristTrackingItem {
+  final String touristId;
+  final String touristName;
+  final String contactNumber;
+  final String emergencyContact;
+  final UserLocation? location;
+
+  const TouristTrackingItem({
+    required this.touristId,
+    required this.touristName,
+    this.contactNumber = '',
+    this.emergencyContact = '',
+    this.location,
+  });
+
+  bool get hasLocation =>
+      location != null &&
+      location!.latitude != 0.0 &&
+      location!.longitude != 0.0 &&
+      location!.latitude >= -90.0 &&
+      location!.latitude <= 90.0 &&
+      location!.longitude >= -180.0 &&
+      location!.longitude <= 180.0;
+
+  double? distanceTo(LatLng guidePos) {
+    if (!hasLocation) return null;
+    return Geolocator.distanceBetween(
+      guidePos.latitude,
+      guidePos.longitude,
+      location!.latitude,
+      location!.longitude,
+    );
+  }
+
+  bool isOutside(LatLng guidePos) {
+    final d = distanceTo(guidePos);
+    if (d == null) return false;
+    return d > 1000.0;
+  }
+}
 
 /// Screen to display the live map for the Tour Guide (US-11 to US-15).
 /// Features live OpenStreetMap, real-time tourist tracking, geofencing,
 /// and a full Tourist Management Panel with per-tourist actions.
 class TourGuideMapScreen extends StatefulWidget {
   final String sessionId;
+  final String? tourId;
 
-  const TourGuideMapScreen({super.key, required this.sessionId});
+  const TourGuideMapScreen({
+    super.key,
+    required this.sessionId,
+    this.tourId,
+  });
+
+  String get effectiveTourId =>
+      (tourId != null && tourId!.isNotEmpty) ? tourId! : sessionId;
 
   @override
   State<TourGuideMapScreen> createState() => _TourGuideMapScreenState();
 }
 
-class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
+class _TourGuideMapScreenState extends State<TourGuideMapScreen>
+    with NavigationMixin<TourGuideMapScreen> {
   final MapController _mapController = MapController();
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
@@ -29,14 +83,17 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   LatLng _guidePosition = const LatLng(14.5995, 120.9842);
   bool _isLoading = true;
   bool _hasPermission = false;
-  bool _showPanel = false;
 
   StreamSubscription<Position>? _publishSubscription;
   StreamSubscription<Position>? _localLocSubscription;
+  StreamSubscription<List<ApprovedTourist>>? _rosterSubscription;
   StreamSubscription<List<UserLocation>>? _allLocationsSubscription;
 
-  List<UserLocation> _tourists = [];
-  UserLocation? _selectedTourist;
+  List<ApprovedTourist> _roster = [];
+  Map<String, UserLocation> _locationMap = {};
+  TouristTrackingItem? _selectedTourist;
+  String? _activeNavTouristId;
+  bool _isStartingNavigation = false;
 
   // ── Sorting / Filtering state ─────────────────────────────
   String _sortMode = 'name'; // 'name' | 'distance' | 'status'
@@ -46,6 +103,25 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   void initState() {
     super.initState();
     _initTracking();
+  }
+
+  Future<void> _recenterOnGuide() async {
+    _mapController.move(_guidePosition, 16.0);
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 2),
+        ),
+      );
+      if (RoutingService.isValidCoordinate(pos.latitude, pos.longitude)) {
+        final fresh = LatLng(pos.latitude, pos.longitude);
+        if (mounted) {
+          setState(() => _guidePosition = fresh);
+          _mapController.move(fresh, 16.0);
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _initTracking() async {
@@ -74,8 +150,10 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
 
+    final effectiveId = widget.effectiveTourId;
+
     _publishSubscription = LocationService.startPublishingLocation(
-      sessionId: widget.sessionId,
+      sessionId: effectiveId,
       userId: 'guide',
       userName: 'Tour Guide',
       isGuide: true,
@@ -89,69 +167,152 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
           ),
         ).listen((pos) {
           if (mounted) {
+            final newPos = LatLng(pos.latitude, pos.longitude);
             setState(
-              () => _guidePosition = LatLng(pos.latitude, pos.longitude),
+              () => _guidePosition = newPos,
             );
+            if (navIsNavigating) {
+              updateNavForUserPosition(
+                currentPosition: newPos,
+                mapController: _mapController,
+              );
+            }
           }
         });
 
-    _allLocationsSubscription =
-        LocationService.watchAllLocations(widget.sessionId).listen((locations) {
+    // 1. Listen to all approved tourists in this tour (Source of Truth for Membership)
+    _rosterSubscription =
+        TourService.watchApprovedTourists(effectiveId).listen((roster) {
           if (!mounted) return;
           setState(() {
-            _tourists = locations
-                .where((l) => !l.isGuide && l.userId != 'guide')
-                .toList();
-            if (_selectedTourist != null) {
-              final idx = _tourists.indexWhere(
-                (t) => t.userId == _selectedTourist!.userId,
-              );
-              _selectedTourist = idx != -1 ? _tourists[idx] : null;
-            }
+            _roster = roster;
+            _syncSelectedTourist();
           });
+        });
+
+    // 2. Listen to all live locations in this tour
+    _allLocationsSubscription =
+        LocationService.watchAllLocations(effectiveId).listen((locations) {
+          if (!mounted) return;
+          final map = <String, UserLocation>{};
+          for (final loc in locations) {
+            if (!loc.isGuide && loc.userId != 'guide') {
+              map[loc.userId] = loc;
+            }
+          }
+          setState(() {
+            _locationMap = map;
+            _syncSelectedTourist();
+          });
+
+          // Dynamic route recalculation if the target tourist moves significantly
+          if (navIsNavigating && _activeNavTouristId != null) {
+            final targetLoc = map[_activeNavTouristId];
+            if (targetLoc != null &&
+                RoutingService.isValidCoordinate(targetLoc.latitude, targetLoc.longitude)) {
+              final freshTargetPos = LatLng(targetLoc.latitude, targetLoc.longitude);
+              refreshRouteIfNeeded(
+                currentPosition: _guidePosition,
+                newTargetPosition: freshTargetPos,
+                mapController: _mapController,
+                thresholdMeters: 40.0,
+              );
+            }
+          }
         });
   }
 
-  double _distanceTo(UserLocation tourist) {
-    return Geolocator.distanceBetween(
-      _guidePosition.latitude,
-      _guidePosition.longitude,
-      tourist.latitude,
-      tourist.longitude,
-    );
+  /// Combines the approved tour roster with real-time locations.
+  List<TouristTrackingItem> get _trackingItems {
+    final list = <TouristTrackingItem>[];
+    final seenIds = <String>{};
+
+    for (final member in _roster) {
+      seenIds.add(member.touristId);
+      final loc = _locationMap[member.touristId];
+      list.add(TouristTrackingItem(
+        touristId: member.touristId,
+        touristName: member.touristName,
+        contactNumber: member.contactNumber,
+        emergencyContact: member.emergencyContact,
+        location: loc,
+      ));
+    }
+
+    // Also include any tourist from live locations that isn't yet in roster
+    for (final loc in _locationMap.values) {
+      if (!seenIds.contains(loc.userId)) {
+        seenIds.add(loc.userId);
+        list.add(TouristTrackingItem(
+          touristId: loc.userId,
+          touristName: loc.userName,
+          location: loc,
+        ));
+      }
+    }
+
+    return list;
   }
 
-  bool _isOutside(UserLocation t) => _distanceTo(t) > 1000.0;
+  void _syncSelectedTourist() {
+    if (_selectedTourist != null) {
+      final items = _trackingItems;
+      final idx = items.indexWhere(
+        (t) => t.touristId == _selectedTourist!.touristId,
+      );
+      _selectedTourist = idx != -1 ? items[idx] : null;
+    }
+  }
 
-  List<UserLocation> get _sortedTourists {
-    List<UserLocation> list = _showOutsideOnly
-        ? _tourists.where(_isOutside).toList()
-        : [..._tourists];
+  List<TouristTrackingItem> get _sortedTourists {
+    final all = _trackingItems;
+    List<TouristTrackingItem> list = _showOutsideOnly
+        ? all.where((t) => t.isOutside(_guidePosition)).toList()
+        : [...all];
+
     switch (_sortMode) {
       case 'distance':
-        list.sort((a, b) => _distanceTo(a).compareTo(_distanceTo(b)));
+        list.sort((a, b) {
+          final distA = a.distanceTo(_guidePosition);
+          final distB = b.distanceTo(_guidePosition);
+          if (distA == null && distB == null) {
+            return a.touristName.compareTo(b.touristName);
+          }
+          if (distA == null) return 1;
+          if (distB == null) return -1;
+          return distA.compareTo(distB);
+        });
         break;
       case 'status':
-        // Outside tourists first
+        // Outside tourists first, then Safe, then Offline
         list.sort((a, b) {
-          final aOut = _isOutside(a) ? 0 : 1;
-          final bOut = _isOutside(b) ? 0 : 1;
-          return aOut.compareTo(bOut);
+          final outA =
+              a.isOutside(_guidePosition) ? 0 : (a.hasLocation ? 1 : 2);
+          final outB =
+              b.isOutside(_guidePosition) ? 0 : (b.hasLocation ? 1 : 2);
+          final cmp = outA.compareTo(outB);
+          return cmp != 0
+              ? cmp
+              : a.touristName.toLowerCase().compareTo(b.touristName.toLowerCase());
         });
         break;
       default: // 'name'
-        list.sort((a, b) => a.userName.compareTo(b.userName));
+        list.sort((a, b) =>
+            a.touristName.toLowerCase().compareTo(b.touristName.toLowerCase()));
     }
     return list;
   }
 
-  Future<void> _ringTourist(UserLocation tourist) async {
+  Future<void> _ringTourist(TouristTrackingItem tourist) async {
     try {
-      await LocationService.triggerRing(widget.sessionId, tourist.userId);
+      await LocationService.triggerRing(
+        widget.effectiveTourId,
+        tourist.touristId,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('📳 Ringing ${tourist.userName}…'),
+            content: Text('📳 Ringing ${tourist.touristName}…'),
             backgroundColor: AppColors.primary,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -170,15 +331,19 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   }
 
   Future<void> _ringAllTourists() async {
-    for (final t in _tourists) {
+    final items = _trackingItems;
+    for (final t in items) {
       try {
-        await LocationService.triggerRing(widget.sessionId, t.userId);
+        await LocationService.triggerRing(
+          widget.effectiveTourId,
+          t.touristId,
+        );
       } catch (_) {}
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('📳 Ringing all ${_tourists.length} tourists…'),
+          content: Text('📳 Ringing all ${items.length} tourists…'),
           backgroundColor: AppColors.primary,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -189,37 +354,159 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
     }
   }
 
-  Future<void> _navigateTo(UserLocation tourist) async {
-    // Try geo: URI first (opens native maps app)
-    final geoUri = Uri.parse(
-      'geo:${tourist.latitude},${tourist.longitude}'
-      '?q=${tourist.latitude},${tourist.longitude}',
-    );
-    // Fallback: Google Maps directions link
-    final mapsUri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1'
-      '&origin=${_guidePosition.latitude},${_guidePosition.longitude}'
-      '&destination=${tourist.latitude},${tourist.longitude}'
-      '&travelmode=walking',
-    );
+  /// Starts in-app navigation to a tourist using OSRM routing.
+  /// Renders a polyline on the map and displays a floating Navigation HUD.
+  Future<void> _navigateTo(TouristTrackingItem tourist) async {
+    if (_isStartingNavigation || navIsLoading) {
+      return;
+    }
+
+    // 1. Retrieve the most recent live location for this tourist from current tour
+    final latestLoc = _locationMap[tourist.touristId] ?? tourist.location;
+    if (latestLoc == null ||
+        !RoutingService.isValidCoordinate(
+          latestLoc.latitude,
+          latestLoc.longitude,
+        )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Cannot navigate: Location unavailable for ${tourist.touristName}.',
+          ),
+          backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final touristPos = LatLng(latestLoc.latitude, latestLoc.longitude);
+
+    setState(() {
+      _isStartingNavigation = true;
+      _selectedTourist = null;
+      _activeNavTouristId = tourist.touristId;
+    });
+
+    if (_sheetController.isAttached) {
+      _sheetController.animateTo(
+        0.0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
+
     try {
-      if (await canLaunchUrl(geoUri)) {
-        await launchUrl(geoUri);
-      } else {
-        await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
+      // 2. Fetch fresh Guide GPS location
+      LatLng guidePos = _guidePosition;
+      try {
+        final freshGuide = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 3),
+          ),
+        );
+        if (RoutingService.isValidCoordinate(
+          freshGuide.latitude,
+          freshGuide.longitude,
+        )) {
+          guidePos = LatLng(freshGuide.latitude, freshGuide.longitude);
+          if (mounted) {
+            setState(() => _guidePosition = guidePos);
+          }
+        }
+      } catch (e) {
+        debugPrint('TourGuideMap: Using current known guide position ($e)');
       }
-    } catch (_) {
-      // Final fallback — force external browser
-      await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
+
+      // 3. Validate coordinates
+      if (!RoutingService.isValidCoordinate(
+            guidePos.latitude,
+            guidePos.longitude,
+          ) ||
+          !RoutingService.isValidCoordinate(
+            touristPos.latitude,
+            touristPos.longitude,
+          )) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Unable to calculate route: Invalid coordinates.',
+              ),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
+      // 4. Calculate route and begin navigation
+      await startNavigation(
+        start: guidePos,
+        end: touristPos,
+        targetLabel: tourist.touristName,
+        mapController: _mapController,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isStartingNavigation = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void endNavigation() {
+    super.endNavigation();
+    _activeNavTouristId = null;
+    if (mounted) {
+      setState(() {
+        _selectedTourist = null;
+      });
+      if (_sheetController.isAttached) {
+        _sheetController.animateTo(
+          0.0,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
     }
   }
 
   /// Centres the map on a specific tourist and selects them.
-  void _focusOnTourist(UserLocation tourist) {
+  void _focusOnTourist(TouristTrackingItem tourist) {
+    if (!tourist.hasLocation) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Location unavailable for ${tourist.touristName}.',
+          ),
+          backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _selectedTourist = tourist;
     });
-    _mapController.move(LatLng(tourist.latitude, tourist.longitude), 17.0);
+    _mapController.move(
+      LatLng(tourist.location!.latitude, tourist.location!.longitude),
+      17.0,
+    );
     // Hide the panel so the quick action card is visible
     if (_sheetController.isAttached) {
       _sheetController.animateTo(
@@ -231,12 +518,23 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   }
 
   @override
+  void deactivate() {
+    _publishSubscription?.cancel();
+    _localLocSubscription?.cancel();
+    _rosterSubscription?.cancel();
+    _allLocationsSubscription?.cancel();
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     _publishSubscription?.cancel();
     _localLocSubscription?.cancel();
+    _rosterSubscription?.cancel();
     _allLocationsSubscription?.cancel();
-    _mapController.dispose();
     _sheetController.dispose();
+    _mapController.dispose();
+    disposeNavigation();
     super.dispose();
   }
 
@@ -251,69 +549,94 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
       return _buildPermissionScreen();
     }
 
-    final outsideCount = _tourists.where(_isOutside).length;
-    final safeCount = _tourists.length - outsideCount;
+    final allItems = _trackingItems;
+    final withLoc = allItems.where((t) => t.hasLocation).toList();
+    final outsideCount =
+        withLoc.where((t) => t.isOutside(_guidePosition)).length;
+    final safeCount = withLoc.length - outsideCount;
+    final offlineCount = allItems.length - withLoc.length;
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: const BackButton(),
-        title: const Text(AppStrings.mapTitle),
-        iconTheme: const IconThemeData(color: AppColors.primary),
-        actions: [
-          IconButton(
-            tooltip: 'Manage Tourists',
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.people_rounded, color: AppColors.primary),
-                if (outsideCount > 0)
-                  Positioned(
-                    right: -4,
-                    top: -4,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(
-                        color: AppColors.error,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '$outsideCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+    return PopScope(
+      canPop: !_sheetController.isAttached || _sheetController.size <= 0.05,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_sheetController.isAttached && _sheetController.size > 0.05) {
+          _sheetController.animateTo(
+            0.0,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeIn,
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: BackButton(
             onPressed: () {
-              if (!_showPanel) {
-                // Ensure pointer event finishes before changing state
-                Future.microtask(() {
-                  if (mounted) setState(() => _showPanel = true);
-                  if (_sheetController.isAttached) {
-                    _sheetController.animateTo(
-                      0.45,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
-                    );
-                  }
-                });
+              if (_sheetController.isAttached && _sheetController.size > 0.05) {
+                _sheetController.animateTo(
+                  0.0,
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeIn,
+                );
               } else {
-                if (_sheetController.isAttached) {
-                  _sheetController.animateTo(
-                    0.0,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeIn,
-                  );
-                }
+                Navigator.of(context).maybePop();
               }
             },
           ),
-        ],
-      ),
+          title: const Text(AppStrings.mapTitle),
+          iconTheme: const IconThemeData(color: AppColors.primary),
+          actions: [
+            IconButton(
+              tooltip: 'Manage Tourists',
+              icon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.people_rounded, color: AppColors.primary),
+                  if (outsideCount > 0)
+                    Positioned(
+                      right: -4,
+                      top: -4,
+                      child: Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: const BoxDecoration(
+                          color: AppColors.error,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$outsideCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              onPressed: () {
+                if (_sheetController.isAttached) {
+                  if (_sheetController.size > 0.05) {
+                    _sheetController.animateTo(
+                      0.0,
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeIn,
+                    );
+                  } else {
+                    if (_selectedTourist != null) {
+                      setState(() => _selectedTourist = null);
+                    }
+                    _sheetController.animateTo(
+                      0.45,
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                }
+              },
+            ),
+          ],
+        ),
       body: Stack(
         children: [
           // ── OpenStreetMap ──────────────────────────────────────
@@ -341,6 +664,8 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                   ),
                 ],
               ),
+              // In-app navigation polyline (REV-003)
+              buildNavPolylineLayer(),
               MarkerLayer(
                 markers: [
                   _mapMarker(
@@ -349,12 +674,15 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                     icon: Icons.my_location_rounded,
                     color: AppColors.primary,
                   ),
-                  ..._tourists.map((t) {
-                    final outside = _isOutside(t);
-                    final selected = _selectedTourist?.userId == t.userId;
+                  ...withLoc.map((t) {
+                    final outside = t.isOutside(_guidePosition);
+                    final selected = _selectedTourist?.touristId == t.touristId;
                     return _mapMarker(
-                      point: LatLng(t.latitude, t.longitude),
-                      label: t.userName,
+                      point: LatLng(
+                        t.location!.latitude,
+                        t.location!.longitude,
+                      ),
+                      label: t.touristName,
                       icon: outside
                           ? Icons.warning_rounded
                           : Icons.person_pin_circle_rounded,
@@ -368,78 +696,102 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
             ],
           ),
 
-          // ── Safe / Outside counter bar ─────────────────────────
+          // ── Safe / Outside / Offline counter bar ─────────────────────────
           Positioned(
+            key: const ValueKey('tour_guide_status_bar'),
             top: 12,
             left: 16,
-            child: SafeArea(child: _buildStatusBar(safeCount, outsideCount)),
+            child: SafeArea(
+              child: _buildStatusBar(safeCount, outsideCount, offlineCount),
+            ),
           ),
 
           // ── Recenter button ────────────────────────────────────
           Positioned(
+            key: const ValueKey('tour_guide_recenter_btn'),
             bottom: _selectedTourist != null ? 200 : 24,
             right: 16,
-            child: FloatingActionButton.small(
-              heroTag: 'recenter',
-              tooltip: 'Recenter on my location',
-              backgroundColor: Colors.white,
-              onPressed: () => _mapController.move(_guidePosition, 15.0),
-              child: const Icon(
-                Icons.my_location_rounded,
-                color: AppColors.primary,
-              ),
+            child: (!navIsNavigating && !navIsLoading)
+                ? FloatingActionButton.small(
+                    heroTag: 'recenter',
+                    tooltip: 'Recenter on my location',
+                    backgroundColor: Colors.white,
+                    onPressed: _recenterOnGuide,
+                    child: const Icon(
+                      Icons.my_location_rounded,
+                      color: AppColors.primary,
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+
+          // ── In-App Navigation HUD (REV-003) ─────────────────
+          Positioned(
+            key: const ValueKey('tour_guide_nav_hud'),
+            bottom: 16,
+            left: 16,
+            right: 16,
+            child: SafeArea(
+              child: (navIsNavigating || navIsLoading)
+                  ? buildNavigationHUD(
+                      currentPosition: _guidePosition,
+                      mapController: _mapController,
+                      onRecenter: _recenterOnGuide,
+                    )
+                  : const SizedBox.shrink(),
             ),
           ),
 
           // ── Selected tourist quick-action card ────────────────
           Positioned(
+            key: const ValueKey('tour_guide_quick_card'),
             bottom: 16,
             left: 16,
             right: 16,
-            child: IgnorePointer(
-              ignoring: _selectedTourist == null || _showPanel,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 200),
-                opacity: (_selectedTourist != null && !_showPanel) ? 1.0 : 0.0,
-                child: SafeArea(
-                  child: _selectedTourist != null
-                      ? _buildQuickCard(_selectedTourist!)
-                      : const SizedBox.shrink(),
-                ),
-              ),
-            ),
+            child: (!navIsNavigating && !navIsLoading)
+                ? AnimatedBuilder(
+                    animation: _sheetController,
+                    builder: (context, _) {
+                      final bool isPanelOpen =
+                          _sheetController.isAttached &&
+                          _sheetController.size > 0.05;
+                      final bool isVisible =
+                          _selectedTourist != null && !isPanelOpen;
+                      return IgnorePointer(
+                        ignoring: !isVisible,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          opacity: isVisible ? 1.0 : 0.0,
+                          child: SafeArea(
+                            child: _selectedTourist != null
+                                ? _buildQuickCard(_selectedTourist!)
+                                : const SizedBox.shrink(),
+                          ),
+                        ),
+                      );
+                    },
+                  )
+                : const SizedBox.shrink(),
           ),
 
           // ── Tourist Management Draggable Panel ─────────────────
           Positioned.fill(
-            child: NotificationListener<DraggableScrollableNotification>(
-              onNotification: (notification) {
-                if (notification.extent <= 0.01 && _showPanel) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) setState(() => _showPanel = false);
-                  });
-                } else if (notification.extent > 0.01 && !_showPanel) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) setState(() => _showPanel = true);
-                  });
-                }
-                return false;
+            key: const ValueKey('tour_guide_panel_positioned'),
+            child: DraggableScrollableSheet(
+              controller: _sheetController,
+              initialChildSize: 0.0,
+              minChildSize: 0.0,
+              maxChildSize: 0.85,
+              snap: true,
+              snapSizes: const [0.0, 0.45, 0.85],
+              builder: (context, scrollCtrl) {
+                return _buildManagementPanel(context, scrollCtrl);
               },
-              child: DraggableScrollableSheet(
-                controller: _sheetController,
-                initialChildSize: 0.0,
-                minChildSize: 0.0,
-                maxChildSize: 0.85,
-                snap: true,
-                snapSizes: const [0.0, 0.45, 0.85],
-                builder: (context, scrollCtrl) {
-                  return _buildManagementPanel(context, scrollCtrl);
-                },
-              ),
             ),
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -502,7 +854,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   }
 
   // ── Status counter bar ──────────────────────────────────────
-  Widget _buildStatusBar(int safe, int outside) {
+  Widget _buildStatusBar(int safe, int outside, int offline) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -545,6 +897,24 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
               color: outside > 0 ? AppColors.error : AppColors.textSecondary,
             ),
           ),
+          if (offline > 0) ...[
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              width: 1,
+              height: 18,
+              color: AppColors.border,
+            ),
+            _dot(AppColors.textHint),
+            const SizedBox(width: 6),
+            Text(
+              '$offline Offline',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: AppColors.textHint,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -557,9 +927,15 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
   );
 
   // ── Quick action card (when tourist tapped on map) ──────────
-  Widget _buildQuickCard(UserLocation tourist) {
-    final dist = _distanceTo(tourist);
-    final outside = dist > 1000.0;
+  Widget _buildQuickCard(TouristTrackingItem tourist) {
+    final dist = tourist.distanceTo(_guidePosition);
+    final outside = tourist.isOutside(_guidePosition);
+    final distText = dist != null
+        ? (outside
+            ? '⚠ ${(dist / 1000).toStringAsFixed(2)} km — Outside boundary'
+            : '✅ ${(dist / 1000).toStringAsFixed(2)} km — Safe')
+        : '📍 Location unavailable';
+
     return Material(
       color: AppColors.surface,
       borderRadius: BorderRadius.circular(20),
@@ -582,11 +958,23 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                 CircleAvatar(
                   radius: 20,
                   backgroundColor:
-                      (outside ? AppColors.error : AppColors.success)
+                      (outside
+                              ? AppColors.error
+                              : (tourist.hasLocation
+                                  ? AppColors.success
+                                  : AppColors.textHint))
                           .withValues(alpha: 0.12),
                   child: Icon(
-                    outside ? Icons.warning_rounded : Icons.person_rounded,
-                    color: outside ? AppColors.error : AppColors.success,
+                    outside
+                        ? Icons.warning_rounded
+                        : (tourist.hasLocation
+                            ? Icons.person_rounded
+                            : Icons.location_off_rounded),
+                    color: outside
+                        ? AppColors.error
+                        : (tourist.hasLocation
+                            ? AppColors.success
+                            : AppColors.textHint),
                     size: 20,
                   ),
                 ),
@@ -596,7 +984,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        tourist.userName,
+                        tourist.touristName,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 15,
@@ -604,12 +992,14 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                         ),
                       ),
                       Text(
-                        outside
-                            ? '⚠ ${(dist / 1000).toStringAsFixed(2)} km — Outside boundary'
-                            : '✅ ${(dist / 1000).toStringAsFixed(2)} km — Safe',
+                        distText,
                         style: TextStyle(
                           fontSize: 12,
-                          color: outside ? AppColors.error : AppColors.success,
+                          color: outside
+                              ? AppColors.error
+                              : (tourist.hasLocation
+                                  ? AppColors.success
+                                  : AppColors.textHint),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -641,10 +1031,16 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                 Expanded(
                   child: _actionBtn(
                     icon: Icons.navigation_rounded,
-                    label: 'Navigate',
-                    color: AppColors.accent,
+                    label: (_isStartingNavigation || navIsLoading)
+                        ? 'Loading…'
+                        : 'Navigate',
+                    color: (tourist.hasLocation && !_isStartingNavigation && !navIsLoading)
+                        ? AppColors.accent
+                        : AppColors.textHint,
                     filled: true,
-                    onTap: () => _navigateTo(tourist),
+                    onTap: (_isStartingNavigation || navIsLoading || !tourist.hasLocation)
+                        ? () {}
+                        : () => _navigateTo(tourist),
                   ),
                 ),
               ],
@@ -693,7 +1089,11 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
 
   Widget _buildManagementPanel(BuildContext ctx, ScrollController scrollCtrl) {
     final sorted = _sortedTourists;
-    final outsideCount = _tourists.where(_isOutside).length;
+    final allItems = _trackingItems;
+    final withLoc = allItems.where((t) => t.hasLocation).toList();
+    final outsideCount =
+        withLoc.where((t) => t.isOutside(_guidePosition)).length;
+    final offlineCount = allItems.length - withLoc.length;
     final screenWidth = MediaQuery.sizeOf(ctx).width;
 
     return SizedBox(
@@ -752,7 +1152,9 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '${_tourists.length} total · $outsideCount outside',
+                                  offlineCount > 0
+                                      ? '${allItems.length} total · $outsideCount outside · $offlineCount offline'
+                                      : '${allItems.length} total · $outsideCount outside',
                                   softWrap: false,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -768,7 +1170,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                             ),
                           ),
                           // Ring All button
-                          if (_tourists.isNotEmpty)
+                          if (allItems.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(left: 8),
                               child: ElevatedButton.icon(
@@ -911,16 +1313,32 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
     );
   }
 
-  Widget _buildTouristTile(UserLocation tourist) {
-    final dist = _distanceTo(tourist);
-    final outside = dist > 1000.0;
-    final elapsed = DateTime.now().difference(tourist.updatedAt);
-    final timeStr = elapsed.inMinutes == 0
-        ? 'Just now'
-        : '${elapsed.inMinutes} min ago';
-    final distStr = dist < 1000
-        ? '${dist.toStringAsFixed(0)} m'
-        : '${(dist / 1000).toStringAsFixed(2)} km';
+  Widget _buildTouristTile(TouristTrackingItem tourist) {
+    final hasLoc = tourist.hasLocation;
+    final dist = tourist.distanceTo(_guidePosition);
+    final outside = tourist.isOutside(_guidePosition);
+
+    final String distStr;
+    final String timeStr;
+    final Color statusColor;
+    final String statusLabel;
+
+    if (hasLoc) {
+      final elapsed = DateTime.now().difference(tourist.location!.updatedAt);
+      timeStr = elapsed.inMinutes == 0
+          ? 'Just now'
+          : '${elapsed.inMinutes} min ago';
+      distStr = dist! < 1000
+          ? '${dist.toStringAsFixed(0)} m'
+          : '${(dist / 1000).toStringAsFixed(2)} km';
+      statusColor = outside ? AppColors.error : AppColors.success;
+      statusLabel = outside ? 'Outside' : 'Safe';
+    } else {
+      timeStr = 'No GPS signal';
+      distStr = 'Location unavailable';
+      statusColor = AppColors.textHint;
+      statusLabel = 'Offline';
+    }
 
     return Container(
       padding: const EdgeInsets.all(14),
@@ -944,17 +1362,15 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                 children: [
                   CircleAvatar(
                     radius: 22,
-                    backgroundColor:
-                        (outside ? AppColors.error : AppColors.success)
-                            .withValues(alpha: 0.12),
+                    backgroundColor: statusColor.withValues(alpha: 0.12),
                     child: Text(
-                      tourist.userName.isNotEmpty
-                          ? tourist.userName[0].toUpperCase()
+                      tourist.touristName.isNotEmpty
+                          ? tourist.touristName[0].toUpperCase()
                           : '?',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 18,
-                        color: outside ? AppColors.error : AppColors.success,
+                        color: statusColor,
                       ),
                     ),
                   ),
@@ -965,7 +1381,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                       width: 12,
                       height: 12,
                       decoration: BoxDecoration(
-                        color: outside ? AppColors.error : AppColors.success,
+                        color: statusColor,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.surface, width: 2),
                       ),
@@ -979,7 +1395,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      tourist.userName,
+                      tourist.touristName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       softWrap: false,
@@ -993,23 +1409,26 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                     Row(
                       children: [
                         Icon(
-                          Icons.location_on_rounded,
+                          hasLoc
+                              ? Icons.location_on_rounded
+                              : Icons.location_off_rounded,
                           size: 12,
-                          color: outside ? AppColors.error : AppColors.success,
+                          color: statusColor,
                         ),
                         const SizedBox(width: 3),
-                        Text(
-                          distStr,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: outside
-                                ? AppColors.error
-                                : AppColors.success,
-                            fontWeight: FontWeight.w700,
+                        Flexible(
+                          child: Text(
+                            distStr,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: statusColor,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Icon(
+                        const Icon(
                           Icons.access_time_rounded,
                           size: 12,
                           color: AppColors.textHint,
@@ -1034,16 +1453,15 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: (outside ? AppColors.error : AppColors.success)
-                      .withValues(alpha: 0.12),
+                  color: statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  outside ? 'Outside' : 'Safe',
+                  statusLabel,
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: outside ? AppColors.error : AppColors.success,
+                    color: statusColor,
                   ),
                 ),
               ),
@@ -1060,7 +1478,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
                 child: _tileAction(
                   icon: Icons.center_focus_strong_rounded,
                   label: 'Focus',
-                  color: AppColors.primary,
+                  color: hasLoc ? AppColors.primary : AppColors.textHint,
                   onTap: () => _focusOnTourist(tourist),
                 ),
               ),
@@ -1079,10 +1497,16 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen> {
               Expanded(
                 child: _tileAction(
                   icon: Icons.navigation_rounded,
-                  label: 'Navigate',
-                  color: AppColors.accent,
+                  label: (_isStartingNavigation || navIsLoading)
+                      ? 'Loading…'
+                      : 'Navigate',
+                  color: (hasLoc && !_isStartingNavigation && !navIsLoading)
+                      ? AppColors.accent
+                      : AppColors.textHint,
                   filled: true,
-                  onTap: () => _navigateTo(tourist),
+                  onTap: (_isStartingNavigation || navIsLoading || !hasLoc)
+                      ? () {}
+                      : () => _navigateTo(tourist),
                 ),
               ),
             ],
