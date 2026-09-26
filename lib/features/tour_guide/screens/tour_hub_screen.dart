@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../../core/models/join_request_model.dart';
 import '../../../core/models/tour_model.dart';
 import '../../../core/services/tour_service.dart';
+import '../../../core/services/tour_status_resolver.dart';
 import '../../../core/services/itinerary_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/chat_badge_service.dart';
@@ -348,6 +349,8 @@ class _TourHubScreenState extends State<TourHubScreen> {
                     tourId: tour.id,
                     tourStartDate: tour.startDate,
                     tourEndDate: tour.endDate,
+                    tourStartDateTime: TourStatusResolver.getTourStartDateTime(tour),
+                    tourEndDateTime: TourStatusResolver.getTourEndDateTime(tour),
                   ),
                 ),
               ),
@@ -412,6 +415,8 @@ class _TourHubScreenState extends State<TourHubScreen> {
                             tourId: tour.id,
                             tourStartDate: tour.startDate,
                             tourEndDate: tour.endDate,
+                            tourStartDateTime: TourStatusResolver.getTourStartDateTime(tour),
+                            tourEndDateTime: TourStatusResolver.getTourEndDateTime(tour),
                           ),
                         ),
                       ),
@@ -818,8 +823,8 @@ class _TourHubScreenState extends State<TourHubScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('End Tour?'),
         content: const Text(
-          'Marking this tour as Completed will archive the roster, preserve attendance records, and set the group chat to Read-Only mode.',
-          style: TextStyle(fontSize: 14),
+          'Are you sure you want to end this tour? The tour will be moved to Completed.',
+          style: TextStyle(fontSize: 14, height: 1.4),
         ),
         actions: [
           TextButton(
@@ -829,11 +834,23 @@ class _TourHubScreenState extends State<TourHubScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await TourService.completeTour(tour.id);
+              await TourService.endTour(tour.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Tour Ended Successfully.'),
+                    backgroundColor: AppColors.success,
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
               foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text('End Tour'),
           ),
@@ -848,9 +865,9 @@ class _TourHubScreenState extends State<TourHubScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Delete Tour?'),
-        content: Text(
-          'Are you sure you want to permanently delete "${tour.name}" and all its itineraries and data?',
-          style: const TextStyle(fontSize: 14),
+        content: const Text(
+          'Are you sure you want to permanently delete this completed tour? This action cannot be undone.',
+          style: TextStyle(fontSize: 14, height: 1.4),
         ),
         actions: [
           TextButton(
@@ -860,14 +877,27 @@ class _TourHubScreenState extends State<TourHubScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await TourService.deleteTour(tour.id);
-              if (context.mounted) Navigator.pop(context);
+              final guideId = tour.guideId.isNotEmpty ? tour.guideId : null;
+              await TourService.deleteTour(tour.id, guideId: guideId);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Tour Deleted Successfully'),
+                    backgroundColor: AppColors.textPrimary,
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+                Navigator.pop(context);
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
               foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text('Delete Permanently'),
+            child: const Text('Delete'),
           ),
         ],
       ),

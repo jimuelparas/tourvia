@@ -21,6 +21,8 @@ class AddEditItineraryScreen extends StatefulWidget {
   /// Optional tour start/end dates for date picker constraint.
   final DateTime? tourStartDate;
   final DateTime? tourEndDate;
+  final DateTime? tourStartDateTime;
+  final DateTime? tourEndDateTime;
 
   const AddEditItineraryScreen({
     super.key,
@@ -29,6 +31,8 @@ class AddEditItineraryScreen extends StatefulWidget {
     String? tourId,
     this.tourStartDate,
     this.tourEndDate,
+    this.tourStartDateTime,
+    this.tourEndDateTime,
   })  : sessionId = sessionId ?? tourId ?? '',
         tourId = tourId ?? sessionId;
 
@@ -247,6 +251,51 @@ class _AddEditItineraryScreenState extends State<AddEditItineraryScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('End Time must be later than Start Time.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    // Validate stop is within Tour Start Date/Time and End Date/Time
+    final stopStartDateTime = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+      startMins ~/ 60,
+      startMins % 60,
+    );
+    final stopEndDateTime = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+      endMins ~/ 60,
+      endMins % 60,
+    );
+
+    final effectiveTourStart = widget.tourStartDateTime ?? widget.tourStartDate;
+    if (effectiveTourStart != null && stopStartDateTime.isBefore(effectiveTourStart)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Stop start time cannot be earlier than Tour Start Schedule (${_formatTimeOfDay(TimeOfDay.fromDateTime(effectiveTourStart))}).',
+          ),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final effectiveTourEnd = widget.tourEndDateTime ??
+        (widget.tourEndDate != null
+            ? DateTime(widget.tourEndDate!.year, widget.tourEndDate!.month, widget.tourEndDate!.day, 23, 59, 59)
+            : null);
+    if (effectiveTourEnd != null && stopEndDateTime.isAfter(effectiveTourEnd)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Stop end time cannot be later than Tour End Schedule (${_formatTimeOfDay(TimeOfDay.fromDateTime(effectiveTourEnd))}).',
+          ),
           backgroundColor: AppColors.error,
         ),
       );

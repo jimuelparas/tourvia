@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../core/models/tour_model.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/sos_notification_service.dart';
 import '../../../core/services/tour_service.dart';
 import '../../../core/theme/app_colors.dart';
 import 'create_tour_screen.dart';
 import 'tour_guide_home_screen.dart';
 import 'tour_guide_itinerary_screen.dart';
 import 'tour_join_requests_screen.dart';
+import '../widgets/tour_access_qr_dialog.dart';
 
 /// Screen listing all Tours created by the Tour Guide (REV-002 Section 2 & 3).
 ///
@@ -18,7 +19,8 @@ import 'tour_join_requests_screen.dart';
 /// - Active (currently running tour)
 /// - Completed (archived past tours)
 class TourManagementScreen extends StatefulWidget {
-  const TourManagementScreen({super.key});
+  final int initialTabIndex;
+  const TourManagementScreen({super.key, this.initialTabIndex = 0});
 
   @override
   State<TourManagementScreen> createState() => _TourManagementScreenState();
@@ -32,7 +34,11 @@ class _TourManagementScreenState extends State<TourManagementScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: widget.initialTabIndex.clamp(0, 2),
+    );
     // Periodically re-render to catch automatic time-based schedule transitions (REV-004)
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
@@ -215,19 +221,9 @@ class _TourManagementScreenState extends State<TourManagementScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Access Code Chip with Copy only
+              // Access Code Chip: opens Tour Access Popup with QR code
               InkWell(
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: tour.accessCode));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Access Code "${tour.accessCode}" copied!'),
-                      backgroundColor: AppColors.success,
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                },
+                onTap: () => TourAccessQrDialog.show(context, tour),
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -348,7 +344,7 @@ class _TourManagementScreenState extends State<TourManagementScreen>
             ],
           ),
 
-          // For UPCOMING tours, add Edit and Delete action buttons
+          // For UPCOMING tours: Edit and Delete
           if (tour.isUpcoming) ...[
             const SizedBox(height: 12),
             const Divider(height: 1),
@@ -394,30 +390,178 @@ class _TourManagementScreenState extends State<TourManagementScreen>
               ],
             ),
           ],
+
+          // For ACTIVE tours: End Tour action ONLY (no delete)
+          if (tour.isActive) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _confirmEndTour(context, tour),
+                icon: const Icon(Icons.stop_circle_outlined, size: 16),
+                label: const Text('End Tour'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                  side: BorderSide(color: AppColors.error.withValues(alpha: 0.4)),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
+
+          // For COMPLETED tours: Delete action ONLY
+          if (tour.isCompleted) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _confirmDeleteCompletedTour(context, tour),
+                icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                label: const Text('Delete Tour'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                  side: BorderSide(color: AppColors.error.withValues(alpha: 0.4)),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
+  /// Confirmation and execution for ending an Active tour.
+  Future<void> _confirmEndTour(BuildContext context, Tour tour) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('End Tour?'),
+        content: const Text(
+          'Are you sure you want to end this tour? The tour will be moved to Completed.',
+          style: TextStyle(fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('End Tour'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      try {
+        await TourService.endTour(tour.id);
+        SosNotificationService.instance.stopWatching();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tour Ended Successfully.'),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to end tour: $e'),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  /// Confirmation and execution for deleting a Completed tour.
+  Future<void> _confirmDeleteCompletedTour(BuildContext context, Tour tour) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Tour?'),
+        content: const Text(
+          'Are you sure you want to permanently delete this completed tour? This action cannot be undone.',
+          style: TextStyle(fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      try {
+        final guideId = AuthService.currentUser?.uid;
+        await TourService.deleteTour(tour.id, guideId: guideId);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Tour Deleted Successfully'),
+              backgroundColor: AppColors.textPrimary,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to delete tour: $e'),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  /// Confirmation and execution for deleting an Upcoming tour.
   Future<void> _confirmDeleteTour(BuildContext context, Tour tour) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.delete_outline_rounded, color: AppColors.error, size: 24),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(child: Text('Delete Tour?')),
-          ],
-        ),
+        title: const Text('Delete Tour?'),
         content: Text(
           'Are you sure you want to delete this upcoming tour?\n\n"${tour.name}" (${tour.formattedDateRange})',
           style: const TextStyle(fontSize: 14, height: 1.4),
@@ -442,13 +586,15 @@ class _TourManagementScreenState extends State<TourManagementScreen>
 
     if (confirmed == true && context.mounted) {
       try {
-        await TourService.deleteTour(tour.id);
+        final guideId = AuthService.currentUser?.uid;
+        await TourService.deleteTour(tour.id, guideId: guideId);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Tour "${tour.name}" deleted.'),
+            const SnackBar(
+              content: Text('Tour Deleted Successfully'),
               backgroundColor: AppColors.textPrimary,
               behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 3),
             ),
           );
         }

@@ -141,6 +141,41 @@ class ItineraryItem {
     return ItineraryStatus.upcoming;
   }
 
+  /// Full scheduled start DateTime (Date + startTime).
+  DateTime get startDateTime {
+    final mins = _parseTimeToMinutes(startTime);
+    return DateTime(date.year, date.month, date.day, mins ~/ 60, mins % 60);
+  }
+
+  /// Full scheduled end DateTime (Date + endTime).
+  DateTime get endDateTime {
+    final mins = _parseTimeToMinutes(endTime);
+    return DateTime(date.year, date.month, date.day, mins ~/ 60, mins % 60);
+  }
+
+  /// Compares two stops chronologically:
+  /// Primary sort: Date ascending (calendar date only)
+  /// Secondary sort: Start Time ascending (minutes from midnight)
+  /// Fallback sort: End Time ascending
+  static int compareChronological(ItineraryItem a, ItineraryItem b) {
+    // 1. Primary: Date ascending
+    final aDate = DateTime(a.date.year, a.date.month, a.date.day);
+    final bDate = DateTime(b.date.year, b.date.month, b.date.day);
+    final dateComp = aDate.compareTo(bDate);
+    if (dateComp != 0) return dateComp;
+
+    // 2. Secondary: Start Time ascending
+    final aStart = _parseTimeToMinutes(a.startTime);
+    final bStart = _parseTimeToMinutes(b.startTime);
+    final startComp = aStart.compareTo(bStart);
+    if (startComp != 0) return startComp;
+
+    // 3. Fallback: End Time ascending
+    final aEnd = _parseTimeToMinutes(a.endTime);
+    final bEnd = _parseTimeToMinutes(b.endTime);
+    return aEnd.compareTo(bEnd);
+  }
+
   ItineraryItem copyWith({
     String? id,
     String? destinationName,

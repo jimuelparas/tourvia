@@ -27,13 +27,17 @@ class AccessCodeService {
       final codeDoc = await _db.collection('access_codes').doc(trimmed).get();
       if (codeDoc.exists) {
         final codeData = codeDoc.data()!;
+        if (codeData['status'] == 'disabled' || codeData['isActive'] == false) {
+          throw AccessCodeException('code-inactive');
+        }
         final tourId = codeData['tourId'] as String? ?? codeDoc.id;
         final tourDoc = await _db.collection('tours').doc(tourId).get();
         if (tourDoc.exists) {
           final data = tourDoc.data()!;
           final status = (data['status'] as String? ?? 'active').toLowerCase();
-          if (status == 'completed' || status == 'ended') {
-            throw AccessCodeException('code-inactive');
+          final isEnded = data['isEnded'] == true;
+          if (status == 'completed' || status == 'ended' || isEnded) {
+            throw AccessCodeException('tour-completed');
           }
           return tourDoc;
         }
@@ -54,8 +58,9 @@ class AccessCodeService {
         final tourDoc = tourQuery.docs.first;
         final data = tourDoc.data();
         final status = (data['status'] as String? ?? 'active').toLowerCase();
-        if (status == 'completed' || status == 'ended') {
-          throw AccessCodeException('code-inactive');
+        final isEnded = data['isEnded'] == true;
+        if (status == 'completed' || status == 'ended' || isEnded) {
+          throw AccessCodeException('tour-completed');
         }
         return tourDoc;
       }
@@ -287,6 +292,8 @@ class AccessCodeException implements Exception {
 
   String get message {
     switch (code) {
+      case 'tour-completed':
+        return 'This tour has already ended.';
       case 'code-not-found':
         return 'Invalid access code. Please check the code and try again.';
       case 'code-inactive':

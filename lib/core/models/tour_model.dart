@@ -29,6 +29,7 @@ class Tour {
   final int touristCount;
   final String? startTime; // e.g. "08:00 AM" or "08:00"
   final String? endTime; // e.g. "05:00 PM" or "17:00"
+  final bool isEnded;
   final DateTime? endedAt;
   final DateTime? completedAt;
   final DateTime? createdAt;
@@ -48,6 +49,7 @@ class Tour {
     this.touristCount = 0,
     this.startTime,
     this.endTime,
+    this.isEnded = false,
     this.endedAt,
     this.completedAt,
     this.createdAt,
@@ -114,18 +116,19 @@ class Tour {
     return difference + 1;
   }
 
-  /// Checks whether this tour's date range overlaps with another date range.
+  /// Checks whether this tour's full DateTime range overlaps with another range.
+  /// Uses combined Date + Time for precise conflict detection.
   /// Overlap condition: NewStart <= ExistingEnd && NewEnd >= ExistingStart
   bool overlapsWith(DateTime newStart, DateTime newEnd) {
     // Only check active or upcoming tours for conflicts (ignore completed)
     if (isCompleted) return false;
 
-    final s1 = DateTime(startDate.year, startDate.month, startDate.day);
-    final e1 = DateTime(endDate.year, endDate.month, endDate.day);
-    final s2 = DateTime(newStart.year, newStart.month, newStart.day);
-    final e2 = DateTime(newEnd.year, newEnd.month, newEnd.day);
+    // Use full DateTime (Date + Time) from this tour
+    final s1 = TourStatusResolver.getTourStartDateTime(this);
+    final e1 = TourStatusResolver.getTourEndDateTime(this);
 
-    return !s2.isAfter(e1) && !e2.isBefore(s1);
+    // newStart and newEnd are already full DateTimes (with time component)
+    return !newStart.isAfter(e1) && !newEnd.isBefore(s1);
   }
 
   factory Tour.fromFirestore(String id, Map<String, dynamic> data) {
@@ -161,6 +164,8 @@ class Tour {
       touristCount: (data['touristCount'] as num?)?.toInt() ?? 0,
       startTime: data['startTime'] as String? ?? data['tourStartTime'] as String?,
       endTime: data['endTime'] as String? ?? data['tourEndTime'] as String?,
+      isEnded: data['isEnded'] == true ||
+          (data['status'] as String? ?? '').toLowerCase() == 'completed' && data['endedAt'] != null,
       endedAt: parseDateNullable(data['endedAt']),
       completedAt: parseDateNullable(data['completedAt']),
       createdAt: parseDateNullable(data['createdAt']),
@@ -180,6 +185,7 @@ class Tour {
       'status': status,
       'accessCode': accessCode.toUpperCase().trim(),
       'touristCount': touristCount,
+      'isEnded': isEnded,
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
@@ -210,6 +216,7 @@ class Tour {
     int? touristCount,
     String? startTime,
     String? endTime,
+    bool? isEnded,
     DateTime? endedAt,
     DateTime? completedAt,
   }) {
@@ -227,6 +234,7 @@ class Tour {
       touristCount: touristCount ?? this.touristCount,
       startTime: startTime ?? this.startTime,
       endTime: endTime ?? this.endTime,
+      isEnded: isEnded ?? this.isEnded,
       endedAt: endedAt ?? this.endedAt,
       completedAt: completedAt ?? this.completedAt,
       createdAt: createdAt,

@@ -21,20 +21,29 @@ class TourService {
   /// Asynchronously synchronizes the stored Firestore status of a tour if it is stale.
   /// Does not block UI or throw unhandled exceptions.
   static Future<void> syncTourStatusIfNeeded(Tour tour) async {
-    final effective = tour.effectiveStatus.value;
-    if (tour.status.trim().toLowerCase() != effective) {
-      try {
-        final updates = <String, dynamic>{
-          'status': effective,
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
-        if (effective == 'completed' && tour.completedAt == null && tour.endedAt == null) {
-          updates['completedAt'] = FieldValue.serverTimestamp();
-        }
-        await _db.collection('tours').doc(tour.id).update(updates);
-      } catch (e) {
-        // Silently catch; memory-resolved effectiveStatus governs client UI
+    // If tour is manually ended, ensure status is completed and isEnded remains true.
+    if (tour.isEnded) {
+      if (tour.status.trim().toLowerCase() != 'completed') {
+        try {
+          await _db.collection('tours').doc(tour.id).update({
+            'status': 'completed',
+            'isEnded': true,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        } catch (_) {}
       }
+      return;
+    }
+
+    // Automatically transition from upcoming to active when the start time arrives
+    final effective = tour.effectiveStatus;
+    if (effective == TourStatus.active && tour.status.trim().toLowerCase() == 'upcoming') {
+      try {
+        await _db.collection('tours').doc(tour.id).update({
+          'status': 'active',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } catch (_) {}
     }
   }
 
@@ -122,33 +131,40 @@ class TourService {
     });
   }
 
-  /// Real-time stream of the current or next upcoming tour to display on dashboards:
-  /// 1. ACTIVE tour: effectiveStatus == ACTIVE.
-  /// 2. READY / UPCOMING tour: earliest upcoming tour (effectiveStatus == UPCOMING).
-  /// 3. COMPLETED tour: most recently ended tour if all tours are completed.
-  /// Returns null only if no tours exist for this guide.
+  /// Real-time stream of the tour to display on the Tour Guide Dashboard panel:
+  /// Real-time stream of the tour to display on the Tour Guide Dashboard panel:
+  /// 1. FIRST: Active Tour (effectiveStatus == TourStatus.active && !isEnded && status != 'completed')
+  /// 2. SECOND: Nearest Upcoming Tour (effectiveStatus == TourStatus.upcoming, sorted by startDateTime ascending)
+  /// 3. THIRD: null (Completed tours are NEVER selected for the Dashboard panel; Dashboard renders "No Active Tour" card)
   static Stream<Tour?> watchCurrentOrUpcomingTour(String guideId) {
     return watchToursByGuide(guideId).map((tours) {
       if (tours.isEmpty) return null;
 
-      // 1. Check for an Active tour
-      final activeTour = tours.where((t) => t.isActive).firstOrNull;
+      // Priority 1: ACTIVE tour
+      final activeTour = tours.where((t) => t.isActive && !t.isEnded).firstOrNull;
       if (activeTour != null) return activeTour;
 
-      // 2. Check for the next scheduled READY / UPCOMING tour
-      final upcomingTours = tours.where((t) => t.isUpcoming).toList();
+      // Priority 2: Nearest UPCOMING tour ordered by startDateTime ascending
+      final upcomingTours = tours.where((t) {
+        final raw = t.status.trim().toLowerCase();
+        return !t.isEnded &&
+            raw != 'completed' &&
+            raw != 'ended' &&
+            t.endedAt == null &&
+            t.completedAt == null &&
+            t.isUpcoming;
+      }).toList();
+
       if (upcomingTours.isNotEmpty) {
-        upcomingTours.sort((a, b) => a.startDate.compareTo(b.startDate));
+        upcomingTours.sort((a, b) {
+          final sA = TourStatusResolver.getTourStartDateTime(a);
+          final sB = TourStatusResolver.getTourStartDateTime(b);
+          return sA.compareTo(sB);
+        });
         return upcomingTours.first;
       }
 
-      // 3. Fallback: most recent completed tour
-      final completedTours = tours.where((t) => t.isCompleted).toList();
-      if (completedTours.isNotEmpty) {
-        completedTours.sort((a, b) => b.endDate.compareTo(a.endDate));
-        return completedTours.first;
-      }
-
+      // Priority 3: None (Completed tours are never displayed on the Dashboard)
       return null;
     });
   }
@@ -158,12 +174,14 @@ class TourService {
   /// Checks whether a proposed date range overlaps with any existing tour
   /// created by the same guide.
   ///
-  /// Overlap check: NewStart <= ExistingEnd && NewEnd >= ExistingStart
+  /// Uses full DateTime (Date + Time) for overlap detection.
   /// Returns the conflicting [Tour] if found, or null if no conflict exists.
   static Future<Tour?> findScheduleConflict({
     required String guideId,
     required DateTime startDate,
     required DateTime endDate,
+    String? startTime,
+    String? endTime,
     String? excludeTourId,
   }) async {
     final query = await _db
@@ -175,8 +193,25 @@ class TourService {
         .map((d) => Tour.fromFirestore(d.id, d.data()))
         .where((t) => t.id != excludeTourId && !t.isCompleted);
 
+    // Build full start/end DateTime for the proposed tour
+    DateTime proposedStart = DateTime(startDate.year, startDate.month, startDate.day);
+    DateTime proposedEnd = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59, 999);
+
+    if (startTime != null && startTime.trim().isNotEmpty) {
+      final parsed = TourStatusResolver.parseTimeOfDay(startTime);
+      if (parsed != null) {
+        proposedStart = DateTime(startDate.year, startDate.month, startDate.day, parsed.hour, parsed.minute);
+      }
+    }
+    if (endTime != null && endTime.trim().isNotEmpty) {
+      final parsed = TourStatusResolver.parseTimeOfDay(endTime);
+      if (parsed != null) {
+        proposedEnd = DateTime(endDate.year, endDate.month, endDate.day, parsed.hour, parsed.minute, 59, 999);
+      }
+    }
+
     for (final tour in existingTours) {
-      if (tour.overlapsWith(startDate, endDate)) {
+      if (tour.overlapsWith(proposedStart, proposedEnd)) {
         return tour;
       }
     }
@@ -217,12 +252,16 @@ class TourService {
     String schedule = '',
     required String guideId,
     required String guideName,
+    String? startTime,
+    String? endTime,
   }) async {
-    // 1. Conflict Check
+    // 1. Conflict Check (uses full DateTime with time)
     final conflict = await findScheduleConflict(
       guideId: guideId,
       startDate: startDate,
       endDate: endDate,
+      startTime: startTime,
+      endTime: endTime,
     );
 
     if (conflict != null) {
@@ -237,15 +276,29 @@ class TourService {
     // 2. Auto-Generate Unique Access Code
     final accessCode = await generateUniqueAccessCode();
 
-    // 3. Determine initial status based on date
+    // 3. Determine initial status based on full DateTime (Date + Time)
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final startDay = DateTime(startDate.year, startDate.month, startDate.day);
-    final endDay = DateTime(endDate.year, endDate.month, endDate.day);
+    // Build full start/end DateTime
+    DateTime fullStart = DateTime(startDate.year, startDate.month, startDate.day);
+    DateTime fullEnd = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59, 999);
+    if (startTime != null && startTime.trim().isNotEmpty) {
+      final parsed = TourStatusResolver.parseTimeOfDay(startTime);
+      if (parsed != null) {
+        fullStart = DateTime(startDate.year, startDate.month, startDate.day, parsed.hour, parsed.minute);
+      }
+    }
+    if (endTime != null && endTime.trim().isNotEmpty) {
+      final parsed = TourStatusResolver.parseTimeOfDay(endTime);
+      if (parsed != null) {
+        fullEnd = DateTime(endDate.year, endDate.month, endDate.day, parsed.hour, parsed.minute, 59, 999);
+      }
+    }
 
     String initialStatus = 'upcoming';
-    if (!today.isBefore(startDay) && !today.isAfter(endDay)) {
+    if (!now.isBefore(fullStart) && !now.isAfter(fullEnd)) {
       initialStatus = 'active';
+    } else {
+      initialStatus = 'upcoming';
     }
 
     // 4. Create Tour Document
@@ -262,6 +315,8 @@ class TourService {
       status: initialStatus,
       accessCode: accessCode,
       touristCount: 0,
+      startTime: startTime,
+      endTime: endTime,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -289,6 +344,8 @@ class TourService {
       guideId: tour.guideId,
       startDate: tour.startDate,
       endDate: tour.endDate,
+      startTime: tour.startTime,
+      endTime: tour.endTime,
       excludeTourId: tour.id,
     );
 
@@ -302,50 +359,154 @@ class TourService {
     await _db.collection('tours').doc(tour.id).update(tour.toFirestore());
   }
 
-  /// Sets a tour status to 'completed' (Read-Only mode for chat).
-  static Future<void> completeTour(String tourId) async {
-    await _db.collection('tours').doc(tourId).update({
+  /// Ends an active tour: sets status to 'completed', isEnded to true,
+  /// saves endedAt timestamp using server timestamp, disables the access code
+  /// for new tourists, and updates any legacy session references.
+  ///
+  /// IMPORTANT: All itinerary, attendance, chat, and tourist records are
+  /// preserved for historical review.
+  static Future<void> endTour(String tourId) async {
+    final tourRef = _db.collection('tours').doc(tourId);
+    final tourSnap = await tourRef.get();
+    if (!tourSnap.exists) return;
+
+    final data = tourSnap.data() ?? {};
+    final accessCode = (data['accessCode'] as String? ?? '').toUpperCase().trim();
+    final guideId = data['guideId'] as String? ?? '';
+
+    final batch = _db.batch();
+
+    // 1. Update Tour Document: completed, isEnded = true, server timestamps
+    batch.update(tourRef, {
       'status': 'completed',
+      'isEnded': true,
+      'endedAt': FieldValue.serverTimestamp(),
       'completedAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+
+    // 2. Disable Access Code so new tourists cannot join
+    if (accessCode.isNotEmpty) {
+      final codeRef = _db.collection('access_codes').doc(accessCode);
+      batch.update(codeRef, {
+        'status': 'disabled',
+        'isActive': false,
+        'endedAt': FieldValue.serverTimestamp(),
+      });
+    }
+
+    // 3. Update legacy tour_sessions document if present
+    final sessionRef = _db.collection('tour_sessions').doc(tourId);
+    batch.set(sessionRef, {
+      'status': 'ended',
+      'isEnded': true,
+      'endedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (guideId.isNotEmpty && guideId != tourId) {
+      final guideSessionRef = _db.collection('tour_sessions').doc(guideId);
+      batch.set(guideSessionRef, {
+        'status': 'ended',
+        'isEnded': true,
+        'endedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+
+    await batch.commit();
   }
 
-  /// Deletes a tour document and all associated subcollections.
-  static Future<void> deleteTour(String tourId) async {
-    final tourDoc = _db.collection('tours').doc(tourId);
-    final sessionDoc = _db.collection('tour_sessions').doc(tourId);
-    final tourData = await tourDoc.get();
-    final accessCode = tourData.data()?['accessCode'] as String?;
+  /// Sets a tour status to 'completed'. Delegates to [endTour].
+  static Future<void> completeTour(String tourId) async {
+    await endTour(tourId);
+  }
 
-    if (accessCode != null && accessCode.isNotEmpty) {
+  /// Permanently deletes a Completed (or Upcoming) tour and all its related data.
+  ///
+  /// Uses Tour Guide UID + selected tourId for strict data isolation.
+  /// Never touches user profiles, guide/tourist accounts, or other tours.
+  static Future<void> deleteTour(String tourId, {String? guideId}) async {
+    final tourDoc = _db.collection('tours').doc(tourId);
+    final tourSnap = await tourDoc.get();
+    if (!tourSnap.exists) return;
+
+    final tourData = tourSnap.data() ?? {};
+    final docGuideId = tourData['guideId'] as String? ?? '';
+
+    // Security check: verify ownership if guideId is supplied
+    if (guideId != null &&
+        guideId.isNotEmpty &&
+        docGuideId.isNotEmpty &&
+        docGuideId != guideId) {
+      throw Exception(
+          'Unauthorized: Tour does not belong to the current tour guide.');
+    }
+
+    final effectiveGuideId = guideId ?? docGuideId;
+    final accessCode =
+        (tourData['accessCode'] as String? ?? '').toUpperCase().trim();
+
+    // 1. Delete Access Code only if it belongs to this tourId
+    if (accessCode.isNotEmpty) {
       try {
-        await _db.collection('access_codes').doc(accessCode).delete();
+        final codeDoc =
+            await _db.collection('access_codes').doc(accessCode).get();
+        if (codeDoc.exists) {
+          final codeTourId = codeDoc.data()?['tourId'] as String?;
+          if (codeTourId == tourId) {
+            await codeDoc.reference.delete();
+          }
+        }
       } catch (_) {}
     }
 
-    // Delete subcollections in /tours/{tourId}
+    // 2. Delete all subcollections belonging exclusively to this tour
     await _deleteCollection(tourDoc.collection('itinerary'));
     await _deleteCollection(tourDoc.collection('join_requests'));
     await _deleteCollection(tourDoc.collection('tourists'));
-    await _deleteCollection(tourDoc.collection('attendance'));
+
+    // Attendance (both per-stop records and stop documents)
+    try {
+      final attDocs = await tourDoc.collection('attendance').get();
+      for (final stopDoc in attDocs.docs) {
+        await _deleteCollection(stopDoc.reference.collection('records'));
+        await stopDoc.reference.delete();
+      }
+    } catch (_) {}
+
     await _deleteCollection(tourDoc.collection('chat'));
     await _deleteCollection(tourDoc.collection('locations'));
     await _deleteCollection(tourDoc.collection('sos'));
+    await _deleteCollection(tourDoc.collection('notifications'));
 
-    // Delete subcollections in legacy /tour_sessions/{tourId}
-    await _deleteCollection(sessionDoc.collection('itinerary'));
-    await _deleteCollection(sessionDoc.collection('codes'));
-    await _deleteCollection(sessionDoc.collection('attendance'));
-    await _deleteCollection(sessionDoc.collection('chat'));
-    await _deleteCollection(sessionDoc.collection('locations'));
-    await _deleteCollection(sessionDoc.collection('sos'));
-    await _deleteCollection(sessionDoc.collection('tourists'));
+    // 3. Clean legacy /tour_sessions/{tourId} subcollections if present
+    final sessionDoc = _db.collection('tour_sessions').doc(tourId);
+    final sessionSnap = await sessionDoc.get();
+    if (sessionSnap.exists) {
+      await _deleteCollection(sessionDoc.collection('itinerary'));
+      await _deleteCollection(sessionDoc.collection('codes'));
+      try {
+        final legAttDocs = await sessionDoc.collection('attendance').get();
+        for (final stopDoc in legAttDocs.docs) {
+          await _deleteCollection(stopDoc.reference.collection('records'));
+          await stopDoc.reference.delete();
+        }
+      } catch (_) {}
+      await _deleteCollection(sessionDoc.collection('chat'));
+      await _deleteCollection(sessionDoc.collection('locations'));
+      await _deleteCollection(sessionDoc.collection('sos'));
+      await _deleteCollection(sessionDoc.collection('tourists'));
+      await _deleteCollection(sessionDoc.collection('notifications'));
 
+      // If sessionDoc.id != guideId, safely delete the session document itself
+      if (tourId != effectiveGuideId) {
+        try {
+          await sessionDoc.delete();
+        } catch (_) {}
+      }
+    }
+
+    // 4. Delete the primary Tour document
     await tourDoc.delete();
-    try {
-      await sessionDoc.delete();
-    } catch (_) {}
   }
 
   // ── Tourist Join Request Management (REV-002 Section 6) ──

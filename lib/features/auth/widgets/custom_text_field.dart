@@ -12,6 +12,8 @@ class CustomTextField extends StatelessWidget {
     this.hint,
     this.helperText,
     this.prefixIcon,
+    this.onPrefixIconTap,
+    this.prefixTooltip,
     this.suffixIcon,
     this.obscureText = false,
     this.keyboardType,
@@ -28,6 +30,8 @@ class CustomTextField extends StatelessWidget {
   final String? hint;
   final String? helperText;
   final IconData? prefixIcon;
+  final VoidCallback? onPrefixIconTap;
+  final String? prefixTooltip;
   final Widget? suffixIcon;
   final bool obscureText;
   final TextInputType? keyboardType;
@@ -58,7 +62,16 @@ class CustomTextField extends StatelessWidget {
         helperText: helperText,
         counterText: '',
         prefixIcon: prefixIcon != null
-            ? Icon(prefixIcon, size: 22, color: AppColors.textSecondary)
+            ? (onPrefixIconTap != null
+                ? InkResponse(
+                    onTap: onPrefixIconTap,
+                    radius: 20,
+                    child: Tooltip(
+                      message: prefixTooltip ?? 'Scan QR Code',
+                      child: Icon(prefixIcon, size: 22, color: AppColors.textSecondary),
+                    ),
+                  )
+                : Icon(prefixIcon, size: 22, color: AppColors.textSecondary))
             : null,
         suffixIcon: suffixIcon,
       ),

@@ -582,7 +582,7 @@ class _TouristHomeScreenState extends State<TouristHomeScreen> {
         _buildModuleCard(
           title: 'Itinerary',
           subtitle: 'Tour schedule',
-          iconAsset: 'assets/icons/manage_tour.png',
+          iconAsset: 'assets/icons/itinerary.png',
           color: AppColors.primary,
           onTap: () => Navigator.push(
             context,

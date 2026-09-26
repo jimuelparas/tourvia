@@ -61,9 +61,11 @@ class TourStatusResolver {
     try {
       final current = now ?? DateTime.now();
 
-      // ── Priority 1: Explicit / Manual Completion ─────────────
+      // ── Priority 1: Explicit / Manual Completion (isEnded == true) ──
       final rawStatus = tour.status.trim().toLowerCase();
-      if (rawStatus == 'completed' ||
+      if (tour.isEnded ||
+          rawStatus == 'completed' ||
+          rawStatus == 'ended' ||
           tour.endedAt != null ||
           tour.completedAt != null) {
         return TourStatus.completed;
@@ -81,8 +83,9 @@ class TourStatusResolver {
         return TourStatus.completed;
       }
     } catch (_) {
+      if (tour.isEnded) return TourStatus.completed;
       final raw = tour.status.trim().toLowerCase();
-      if (raw == 'completed') return TourStatus.completed;
+      if (raw == 'completed' || raw == 'ended') return TourStatus.completed;
       if (raw == 'active') return TourStatus.active;
       return TourStatus.upcoming;
     }

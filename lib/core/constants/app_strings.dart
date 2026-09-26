@@ -63,13 +63,18 @@ class AppStrings {
       'Google Sign-In failed. Please try again.';
   static const String googleSignInCancelled = 'Google Sign-In was cancelled.';
   // ID Verification
-  static const String idTypeLabel = 'ID Type (Optional)';
-  static const String idTypeHint = 'Select your ID type (Optional)';
-  static const String idPhotoLabel = 'Upload ID Photo (Optional)';
+  static const String idTypeLabel = 'Select Tour Guide Type / ID Type';
+  static const String idTypeHint = 'Select Tour Guide Type / ID Type';
+  static const String idPhotoLabel = 'Upload Required ID Photo';
   static const List<String> validIdTypes = [
-    'Barangay ID / Barangay Clearance',
-    'DOT Tour Guide Accreditation ID',
+    'DOT Tour Guide ID',
+    'Barangay ID',
   ];
+  static const String idRequired =
+      'Valid ID is required to register as a Tour Guide.';
+  static const String idPhotoRequired = 'Please upload your selected ID.';
+  static const String idTypeMismatch =
+      'The uploaded ID does not match the selected ID type.';
 
   // ── Complete Profile Screen (Google Sign-Up) ────────────
   static const String completeProfileTitle = 'Complete Your Profile';

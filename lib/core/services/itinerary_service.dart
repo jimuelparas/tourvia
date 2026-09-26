@@ -71,35 +71,80 @@ class ItineraryService {
     return null;
   }
 
-  /// Fetches all stops for a tour.
+  /// Fetches all stops for a tour, sorted chronologically.
   static Future<List<ItineraryItem>> getStops(String tourId) async {
-    final snap = await _col(tourId).orderBy('order').get();
+    final snap = await _col(tourId).get();
+    List<ItineraryItem> stops = [];
     if (snap.docs.isNotEmpty) {
-      return snap.docs.map(_fromDoc).toList();
+      stops = snap.docs.map(_fromDoc).toList();
+    } else {
+      final legacySnap = await _legacyCol(tourId).get();
+      stops = legacySnap.docs.map(_fromDoc).toList();
     }
-    final legacySnap = await _legacyCol(tourId).orderBy('order').get();
-    return legacySnap.docs.map(_fromDoc).toList();
+    stops.sort(ItineraryItem.compareChronological);
+    return stops;
   }
 
   // ── Guide: CRUD ──────────────────────────────────────────
 
-  /// Adds a new stop to Firestore and returns the generated [stopId].
+  /// Synchronizes all stops in Firestore so their `order` field exactly reflects
+  /// their chronological order (Date ascending, then Start Time ascending).
+  static Future<void> syncChronologicalOrder(String tourId) async {
+    try {
+      final snap = await _col(tourId).get();
+      List<DocumentSnapshot<Map<String, dynamic>>> docs = snap.docs;
+      bool isLegacy = false;
+      if (docs.isEmpty) {
+        final legacySnap = await _legacyCol(tourId).get();
+        docs = legacySnap.docs;
+        isLegacy = true;
+      }
+      if (docs.isEmpty) return;
+
+      final stops = docs.map(_fromDoc).toList();
+      stops.sort(ItineraryItem.compareChronological);
+
+      final batch = _db.batch();
+      bool hasUpdates = false;
+
+      for (int i = 0; i < stops.length; i++) {
+        final stop = stops[i];
+        final newOrder = i + 1;
+        final doc = docs.firstWhere((d) => d.id == stop.id);
+        final currentOrder = doc.data()?['order'];
+
+        if (currentOrder != newOrder) {
+          hasUpdates = true;
+          final updateData = {
+            'order': newOrder,
+            'updatedAt': FieldValue.serverTimestamp(),
+          };
+          if (!isLegacy) {
+            batch.update(_col(tourId).doc(stop.id), updateData);
+          }
+          try {
+            batch.update(_legacyCol(tourId).doc(stop.id), updateData);
+          } catch (_) {}
+        }
+      }
+
+      if (hasUpdates) {
+        await batch.commit();
+      }
+
+      await recalculateRoutes(tourId);
+    } catch (_) {}
+  }
+
+  /// Adds a new stop to Firestore, recalculates chronological order, and returns [stopId].
   static Future<String> addStop(String tourId, ItineraryItem item) async {
-    final existing = await _col(tourId)
-        .orderBy('order', descending: true)
-        .limit(1)
-        .get();
-
-    final nextOrder =
-        existing.docs.isEmpty ? 1 : (existing.docs.first['order'] as int) + 1;
-
     final docData = {
       'destinationName': item.destinationName,
       'date': Timestamp.fromDate(item.date),
       'startTime': item.startTime,
       'endTime': item.endTime,
       'notes': item.notes,
-      'order': nextOrder,
+      'order': 99999, // Assigned by syncChronologicalOrder below
       'latitude': item.latitude,
       'longitude': item.longitude,
       'status': item.status.name,
@@ -116,13 +161,13 @@ class ItineraryService {
       await _legacyCol(tourId).doc(ref.id).set(docData);
     } catch (_) {}
 
-    // Run route recalculation async (fire and forget)
-    recalculateRoutes(tourId);
+    // Synchronize order chronologically and recalculate routes
+    await syncChronologicalOrder(tourId);
 
     return ref.id;
   }
 
-  /// Updates an existing stop's fields in Firestore.
+  /// Updates an existing stop's fields in Firestore and re-synchronizes order.
   static Future<void> updateStop(
     String tourId,
     String stopId,
@@ -159,10 +204,10 @@ class ItineraryService {
       await _legacyCol(tourId).doc(stopId).update(updateData);
     } catch (_) {}
 
-    recalculateRoutes(tourId);
+    await syncChronologicalOrder(tourId);
   }
 
-  /// Deletes a stop document from Firestore.
+  /// Deletes a stop document from Firestore and re-synchronizes order.
   static Future<void> deleteStop(String tourId, String stopId) async {
     // Completed destinations cannot be deleted
     final docSnap = await _col(tourId).doc(stopId).get();
@@ -177,7 +222,8 @@ class ItineraryService {
     try {
       await _legacyCol(tourId).doc(stopId).delete();
     } catch (_) {}
-    recalculateRoutes(tourId);
+
+    await syncChronologicalOrder(tourId);
   }
 
   /// Marks a stop as [ItineraryStatus.completed] in Firestore.
@@ -211,24 +257,28 @@ class ItineraryService {
 
   // ── Shared: Real-time stream ─────────────────────────────
 
-  /// Returns a live stream of itinerary items ordered by [order].
-  /// Used by both the guide (to reflect reorder) and tourist (read-only).
+  /// Returns a live stream of itinerary items strictly ordered chronologically
+  /// (Date ascending, then Start Time ascending).
+  /// Used by both the guide and tourist.
   static Stream<List<ItineraryItem>> watchItinerary(String tourId) {
     return _col(tourId)
-        .orderBy('order')
         .snapshots()
         .asyncMap((snap) async {
+      List<ItineraryItem> stops = [];
       if (snap.docs.isNotEmpty) {
-        return snap.docs.map(_fromDoc).toList();
+        stops = snap.docs.map(_fromDoc).toList();
+      } else {
+        // Fallback to legacy path if new path is empty
+        try {
+          final legSnap = await _legacyCol(tourId).get();
+          if (legSnap.docs.isNotEmpty) {
+            stops = legSnap.docs.map(_fromDoc).toList();
+          }
+        } catch (_) {}
       }
-      // Fallback to legacy path if new path is empty
-      try {
-        final legSnap = await _legacyCol(tourId).orderBy('order').get();
-        if (legSnap.docs.isNotEmpty) {
-          return legSnap.docs.map(_fromDoc).toList();
-        }
-      } catch (_) {}
-      return [];
+      // Always enforce chronological ordering: Date ascending, Start Time ascending
+      stops.sort(ItineraryItem.compareChronological);
+      return stops;
     });
   }
 
@@ -268,10 +318,11 @@ class ItineraryService {
 
   /// Recalculates routes for adjacent stops if they have moved or don't have a route.
   static Future<void> recalculateRoutes(String sessionId) async {
-    final snap = await _col(sessionId).orderBy('order').get();
+    final snap = await _col(sessionId).get();
     if (snap.docs.isEmpty) return;
 
     final stops = snap.docs.map(_fromDoc).toList();
+    stops.sort(ItineraryItem.compareChronological);
     final batch = _db.batch();
     bool hasUpdates = false;
 

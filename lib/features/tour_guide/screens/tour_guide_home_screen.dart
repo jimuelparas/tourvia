@@ -13,15 +13,17 @@ import '../../../core/models/tour_model.dart';
 import '../../../core/models/join_request_model.dart';
 import '../../../core/services/itinerary_service.dart';
 import '../../../core/services/tour_service.dart';
+import '../../../core/services/tour_status_resolver.dart';
 import '../../../core/widgets/weather_panel.dart';
 import '../../itinerary/models/itinerary_item.dart';
 import 'add_edit_itinerary_screen.dart';
+import 'create_tour_screen.dart';
 import 'tour_guide_itinerary_screen.dart';
 import 'tour_hub_screen.dart';
-import 'create_tour_screen.dart';
 import 'tour_join_requests_screen.dart';
 import 'tour_management_screen.dart';
 import 'tour_guide_attendance_screen.dart';
+import '../widgets/tour_access_qr_dialog.dart';
 import '../../chat/screens/group_chat_screen.dart';
 import '../../settings/screens/settings_screen.dart';
 import '../../sos/screens/sos_screen.dart';
@@ -45,6 +47,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
 
   // Session ID derived from the logged-in guide's UID for data isolation
   late final String _sessionId;
+  late final Stream<List<Tour>> _toursStream;
 
   // SOS live monitoring — delegated to SosNotificationService
   StreamSubscription<List<SosAlert>>? _sosUiSubscription;
@@ -53,7 +56,10 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
   @override
   void initState() {
     super.initState();
-    _sessionId = AuthService.currentUser!.uid;
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    _sessionId = AuthService.currentUser?.uid ?? '';
+    _toursStream = TourService.watchToursByGuide(_sessionId);
 
     _animationController = AnimationController(
       vsync: this,
@@ -115,17 +121,69 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                 const SizedBox(height: 20),
                 // Weather panel at top of dashboard
                 const WeatherPanel(),
-                // SOS alert banner removed — alerts now handled via
-                // SosNotificationService with persistent ringing.
-                _buildActiveTourBanner(),
-                Text(
-                  'Quick Modules',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                // Unified Tour Dashboard Panel + Modules Stream
+                StreamBuilder<List<Tour>>(
+                  stream: _toursStream,
+                  builder: (context, snapshot) {
+                    final allTours = snapshot.data ?? [];
+
+                    // Priority 1: ACTIVE tour
+                    final activeTour = allTours
+                        .where((t) => t.isActive && !t.isEnded)
+                        .firstOrNull;
+
+                    // Priority 2: Nearest UPCOMING tour
+                    final upcomingTours = allTours.where((t) {
+                      final raw = t.status.trim().toLowerCase();
+                      return !t.isEnded &&
+                          raw != 'completed' &&
+                          raw != 'ended' &&
+                          t.endedAt == null &&
+                          t.completedAt == null &&
+                          t.isUpcoming;
+                    }).toList();
+                    if (upcomingTours.length > 1) {
+                      upcomingTours.sort((a, b) {
+                        final sA = TourStatusResolver.getTourStartDateTime(a);
+                        final sB = TourStatusResolver.getTourStartDateTime(b);
+                        return sA.compareTo(sB);
+                      });
+                    }
+
+                    // Dashboard Priority: Active -> Nearest Upcoming -> No Active Tour state
+                    // (Completed tours are never displayed on the main dashboard)
+                    final currentTour = activeTour ?? upcomingTours.firstOrNull;
+
+                    final nonCompletedTours = [
+                      if (activeTour != null) activeTour,
+                      ...upcomingTours,
+                    ];
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (currentTour != null)
+                          _buildActiveTourCard(currentTour)
+                        else
+                          _buildNoActiveTourCard(),
+                        Text(
+                          'Quick Modules',
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildGrid(
+                          nonCompletedTours: nonCompletedTours,
+                          activeTour: activeTour,
+                          fallbackTour: currentTour,
+                          guideId: _sessionId,
+                        ),
+                      ],
+                    );
+                  },
                 ),
-                const SizedBox(height: 16),
-                _buildGrid(),
               ],
             ),
           ),
@@ -143,28 +201,82 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
             AuthService.currentUser?.displayName ??
             'Guide';
         final photoUrl = profile?['profilePhotoUrl'] as String?;
+        final tourGuideType = profile?['tourGuideType'] as String?;
+        final isVerifiedGuide = tourGuideType == 'verified';
 
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Welcome $guideName!',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: AppColors.textHint,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Welcome $guideName!',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: AppColors.textHint,
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (tourGuideType != null) ...[
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
                       ),
-                ),
-                Text(
-                  'Tour Management',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
+                      decoration: BoxDecoration(
+                        color: isVerifiedGuide
+                            ? AppColors.primary.withValues(alpha: 0.1)
+                            : Colors.teal.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: isVerifiedGuide
+                              ? AppColors.primary.withValues(alpha: 0.3)
+                              : Colors.teal.withValues(alpha: 0.3),
+                        ),
                       ),
-                ),
-              ],
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isVerifiedGuide
+                                ? Icons.verified_rounded
+                                : Icons.shield_outlined,
+                            size: 13,
+                            color: isVerifiedGuide
+                                ? AppColors.primary
+                                : Colors.teal,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            isVerifiedGuide
+                                ? 'Verified Tour Guide'
+                                : 'Local Tour Guide',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isVerifiedGuide
+                                  ? AppColors.primary
+                                  : Colors.teal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tour Management',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 12),
             InkWell(
               onTap: () => Navigator.push(
                 context,
@@ -189,25 +301,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
   }
 
 
-  Widget _buildActiveTourBanner() {
-    final guideId = AuthService.currentUser?.uid ?? _sessionId;
 
-    return StreamBuilder<Tour?>(
-      stream: TourService.watchCurrentOrUpcomingTour(guideId),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          debugPrint('TourStatusBanner stream error: ${snapshot.error}');
-          return _buildNoActiveTourCard();
-        }
-
-        final tour = snapshot.data;
-        if (tour == null) {
-          return _buildNoActiveTourCard();
-        }
-        return _buildActiveTourCard(tour);
-      },
-    );
-  }
 
   Widget _buildNoActiveTourCard() {
     return Container(
@@ -296,7 +390,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                         builder: (_) => const CreateTourScreen()),
                   ),
                   icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('Create Tour'),
+                  label: const Text('+ Create Tour'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -314,16 +408,20 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
   }
 
   Widget _buildActiveTourCard(Tour tour) {
+    final isUpcoming = tour.isUpcoming;
+    final isCompleted = tour.isCompleted;
+    final isActive = tour.isActive;
+
     final dayNumber = tour.currentScheduleDay;
     final dayStr = 'Day $dayNumber of ${tour.totalDays}';
 
-    // Status-dependent badge text and dot color (REV-004)
+    // Status-dependent badge text and dot color
     final String badgeText;
     final Color badgeDotColor;
-    if (tour.isUpcoming) {
-      badgeText = 'READY / UPCOMING TOUR';
+    if (isUpcoming) {
+      badgeText = 'READY TOUR';
       badgeDotColor = const Color(0xFFFBBF24); // Amber
-    } else if (tour.isCompleted) {
+    } else if (isCompleted) {
       badgeText = 'COMPLETED TOUR';
       badgeDotColor = const Color(0xFF94A3B8); // Slate
     } else {
@@ -331,7 +429,8 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
       badgeDotColor = const Color(0xFF4ADE80); // Green
     }
 
-    final bool isCompleted = tour.isCompleted;
+    final dateStr = tour.formattedDateRange;
+
     final List<Color> gradientColors = isCompleted
         ? const [Color(0xFF64748B), Color(0xFF475569)]
         : const [Color(0xFF0284C7), Color(0xFF0369A1)];
@@ -412,7 +511,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           ),
           const SizedBox(height: 4),
           Text(
-            tour.formattedDateRange,
+            dateStr,
             style: const TextStyle(
               color: Colors.white70,
               fontSize: 13,
@@ -420,7 +519,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           ),
           const SizedBox(height: 14),
 
-          // Access code container with Copy button
+          // Access code container with Copy button and QR popup tap
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
@@ -430,19 +529,27 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
             ),
             child: Row(
               children: [
-                const Icon(Icons.key_rounded, color: Colors.white70, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Code: ${tour.accessCode}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
+                InkWell(
+                  onTap: () => TourAccessQrDialog.show(context, tour),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.qr_code_rounded, color: Colors.white, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Code: ${tour.accessCode}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                const Spacer(),
                 InkWell(
                   onTap: () {
                     Clipboard.setData(ClipboardData(text: tour.accessCode));
@@ -528,6 +635,8 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                             tourId: tour.id,
                             tourStartDate: tour.startDate,
                             tourEndDate: tour.endDate,
+                            tourStartDateTime: TourStatusResolver.getTourStartDateTime(tour),
+                            tourEndDateTime: TourStatusResolver.getTourEndDateTime(tour),
                           ),
                   ),
                 ),
@@ -541,46 +650,17 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Current destination row
-                      if (ongoingStop != null) ...[
+                      // Status & Destination presentation depending on tour lifecycle:
+                      if (tour.isCompleted) ...[
+                        // 3. COMPLETED TOUR
                         Row(
-                          children: [
-                            const Icon(Icons.near_me_rounded,
+                          children: const [
+                            Icon(Icons.check_circle_rounded,
                                 color: Color(0xFF4ADE80), size: 14),
-                            const SizedBox(width: 6),
-                            const Text('Current',
-                              style: TextStyle(
-                                color: Color(0xFF4ADE80),
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '${ongoingStop.destinationName}  ${ongoingStop.startTime} – ${ongoingStop.endTime}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ] else if (isAllDone) ...[
-                        Row(
-                          children: [
-                            const Icon(Icons.check_circle_rounded,
-                                color: Color(0xFF4ADE80), size: 14),
-                            const SizedBox(width: 6),
+                            SizedBox(width: 6),
                             Text(
-                              isCompleted
-                                  ? 'Tour completed'
-                                  : 'All ${stops.length} stops completed today ✓',
-                              style: const TextStyle(
+                              '✓ Tour completed',
+                              style: TextStyle(
                                 color: Color(0xFF4ADE80),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
@@ -588,58 +668,166 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                             ),
                           ],
                         ),
-                      ] else if (!hasStops) ...[
-                        Row(
-                          children: [
-                            const Icon(Icons.add_location_alt_rounded,
-                                color: Color(0xFF38BDF8), size: 14),
-                            const SizedBox(width: 6),
-                            const Text('No itinerary stops added yet',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
+                      ] else if (tour.isUpcoming) ...[
+                        // 1. UPCOMING / READY TOUR
+                        if (tour.startTime != null &&
+                            tour.startTime!.trim().isNotEmpty) ...[
+                          Text(
+                            'Starts at ${tour.startTime}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (upcomingStop != null) const SizedBox(height: 4),
+                        ],
+                        if (upcomingStop != null) ...[
+                          Row(
+                            children: [
+                              const Icon(Icons.near_me_rounded,
+                                  color: Color(0xFF38BDF8), size: 14),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'Next: ',
+                                style: TextStyle(
+                                  color: Color(0xFF38BDF8),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      // Upcoming destination row
-                      if (upcomingStop != null && !isAllDone) ...[
-                        if (ongoingStop != null)
-                          const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Icon(
-                              ongoingStop != null
-                                  ? Icons.skip_next_rounded
-                                  : Icons.near_me_rounded,
-                              color: const Color(0xFF38BDF8),
-                              size: 14,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              ongoingStop != null ? 'Next' : 'Upcoming',
-                              style: const TextStyle(
-                                color: Color(0xFF38BDF8),
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
+                              Expanded(
+                                child: Text(
+                                  '${upcomingStop.destinationName} – ${upcomingStop.startTime}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '${upcomingStop.destinationName}  ${upcomingStop.startTime}',
-                                style: const TextStyle(
+                            ],
+                          ),
+                        ] else if (!hasStops &&
+                            (tour.startTime == null ||
+                                tour.startTime!.trim().isEmpty)) ...[
+                          Row(
+                            children: const [
+                              Icon(Icons.add_location_alt_rounded,
+                                  color: Color(0xFF38BDF8), size: 14),
+                              SizedBox(width: 6),
+                              Text(
+                                'No itinerary stops added yet',
+                                style: TextStyle(
                                   color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ] else ...[
+                        // 2. ACTIVE TOUR
+                        if (ongoingStop != null) ...[
+                          Row(
+                            children: [
+                              const Icon(Icons.near_me_rounded,
+                                  color: Color(0xFF4ADE80), size: 14),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'Current',
+                                style: TextStyle(
+                                  color: Color(0xFF4ADE80),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${ongoingStop.destinationName}  ${ongoingStop.startTime} – ${ongoingStop.endTime}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ] else if (isAllDone) ...[
+                          Row(
+                            children: const [
+                              Icon(Icons.check_circle_rounded,
+                                  color: Color(0xFF4ADE80), size: 14),
+                              SizedBox(width: 6),
+                              Text(
+                                'All stops completed today ✓',
+                                style: TextStyle(
+                                  color: Color(0xFF4ADE80),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
+                        ] else if (!hasStops) ...[
+                          Row(
+                            children: const [
+                              Icon(Icons.add_location_alt_rounded,
+                                  color: Color(0xFF38BDF8), size: 14),
+                              SizedBox(width: 6),
+                              Text(
+                                'No itinerary stops added yet',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        // Upcoming destination row
+                        if (upcomingStop != null && !isAllDone) ...[
+                          if (ongoingStop != null) const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Icon(
+                                ongoingStop != null
+                                    ? Icons.skip_next_rounded
+                                    : Icons.near_me_rounded,
+                                color: const Color(0xFF38BDF8),
+                                size: 14,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                ongoingStop != null ? 'Next' : 'Upcoming',
+                                style: const TextStyle(
+                                  color: Color(0xFF38BDF8),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${upcomingStop.destinationName} • ${upcomingStop.startTime}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                       // View / Add action
                       const SizedBox(height: 6),
@@ -719,7 +907,7 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                   ),
                 ),
               ),
-              if (!isCompleted) ...[
+              if (isActive) ...[
                 const SizedBox(width: 8),
                 IconButton(
                   onPressed: () => _confirmEndTour(tour),
@@ -743,136 +931,30 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
   Future<void> _confirmEndTour(Tour tour) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) {
-        final confirmController = TextEditingController();
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final textMatches =
-                confirmController.text.trim().toUpperCase() == 'END';
-            return AlertDialog(
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('End Tour?'),
+        content: const Text(
+          'Are you sure you want to end this tour? The tour will be moved to Completed.',
+          style: TextStyle(fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              title: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.error.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.stop_circle_rounded,
-                        color: AppColors.error, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text('End This Tour?'),
-                ],
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Ending "${tour.name}" will:',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _endTourBullet('Mark this tour as Completed'),
-                  _endTourBullet('Disable new tourist join requests'),
-                  _endTourBullet('Set group chat to Read-Only mode'),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.primarySurface,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: const [
-                        Icon(Icons.info_outline_rounded,
-                            size: 16, color: AppColors.primary),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'All itinerary and historical data will be preserved.',
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.primary),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Type END to confirm:',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: confirmController,
-                    onChanged: (_) => setDialogState(() {}),
-                    textCapitalization: TextCapitalization.characters,
-                    decoration: InputDecoration(
-                      hintText: 'END',
-                      hintStyle:
-                          const TextStyle(color: AppColors.textHint),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      filled: true,
-                      fillColor: AppColors.background,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide:
-                            const BorderSide(color: AppColors.border),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide:
-                            const BorderSide(color: AppColors.border),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide:
-                            const BorderSide(color: AppColors.error),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: textMatches
-                      ? () => Navigator.pop(context, true)
-                      : null,
-                  icon: const Icon(Icons.stop_rounded, size: 18),
-                  label: const Text('End Tour'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.error,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor:
-                        AppColors.error.withValues(alpha: 0.3),
-                    disabledForegroundColor: Colors.white60,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('End Tour'),
+          ),
+        ],
+      ),
     );
 
     if (confirmed != true || !mounted) return;
@@ -885,28 +967,16 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
     );
 
     try {
-      await TourService.completeTour(tour.id);
-      await TourSessionService.endTour(_sessionId);
+      await TourService.endTour(tour.id);
+      SosNotificationService.instance.stopWatching();
       if (!mounted) return;
       Navigator.pop(context); // dismiss loading
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: const [
-              Icon(Icons.check_circle_rounded,
-                  color: Colors.white, size: 20),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text('Tour marked as completed. Chat is now Read-Only.'),
-              ),
-            ],
-          ),
+        const SnackBar(
+          content: Text('Tour Ended Successfully.'),
           backgroundColor: AppColors.success,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
-          duration: const Duration(seconds: 4),
+          duration: Duration(seconds: 3),
         ),
       );
     } catch (e) {
@@ -917,57 +987,27 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
           content: Text('Failed to end tour: $e'),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.all(16),
         ),
       );
     }
   }
 
-  Widget _endTourBullet(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 5),
-            child: Icon(Icons.circle, size: 5, color: AppColors.error),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
 
-  Widget _buildGrid() {
-    final guideId = AuthService.currentUser?.uid ?? _sessionId;
-
-    return StreamBuilder<Tour?>(
-      stream: TourService.watchActiveTour(guideId),
-      builder: (context, tourSnapshot) {
-        final activeTour = tourSnapshot.data;
-
-        return GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: 0.95,
-          children: [
+  Widget _buildGrid({
+    required List<Tour> nonCompletedTours,
+    required Tour? activeTour,
+    required Tour? fallbackTour,
+    required String guideId,
+  }) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      crossAxisSpacing: 16,
+      mainAxisSpacing: 16,
+      childAspectRatio: 0.95,
+      children: [
             _buildModuleCard(
               title: 'Manage Tour',
               subtitle: 'View & manage',
@@ -980,12 +1020,15 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                 ),
               ),
             ),
-            // Approvals Module next to Manage Tour
+            // Approvals Module — tour-specific with multi-tour support
             StreamBuilder<List<JoinRequest>>(
               stream: activeTour != null
                   ? TourService.watchJoinRequests(activeTour.id,
                       statusFilter: 'pending')
-                  : const Stream.empty(),
+                  : (fallbackTour != null
+                      ? TourService.watchJoinRequests(fallbackTour.id,
+                          statusFilter: 'pending')
+                      : const Stream.empty()),
               builder: (context, reqSnapshot) {
                 final pendingCount = (reqSnapshot.data ?? []).length;
 
@@ -998,24 +1041,20 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                   badgeCount: pendingCount,
                   color: const Color(0xFFF59E0B),
                   onTap: () {
-                    if (activeTour != null) {
-                      Navigator.push(
+                    _handleModuleTap(
+                      nonCompletedTours: nonCompletedTours,
+                      activeTour: activeTour,
+                      moduleTitle: 'Join Approvals',
+                      onOpen: (tour) => Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => TourJoinRequestsScreen(
-                            tourId: activeTour.id,
-                            tourName: activeTour.name,
+                            tourId: tour.id,
+                            tourName: tour.name,
                           ),
                         ),
-                      );
-                    } else {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const TourManagementScreen(),
-                        ),
-                      );
-                    }
+                      ),
+                    );
                   },
                 );
               },
@@ -1026,24 +1065,20 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
               iconAsset: 'assets/icons/attendance.png',
               color: AppColors.primary,
               onTap: () {
-                if (activeTour != null) {
-                  Navigator.push(
+                _handleModuleTap(
+                  nonCompletedTours: nonCompletedTours,
+                  activeTour: activeTour,
+                  moduleTitle: 'Attendance',
+                  onOpen: (tour) => Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => TourGuideAttendanceScreen(
-                        sessionId: activeTour.id,
-                        tourId: activeTour.id,
+                        sessionId: tour.id,
+                        tourId: tour.id,
                       ),
                     ),
-                  );
-                } else {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const TourManagementScreen(),
-                    ),
-                  );
-                }
+                  ),
+                );
               },
             ),
             _buildModuleCard(
@@ -1052,29 +1087,27 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
               iconAsset: 'assets/icons/location.png',
               color: AppColors.accentTeal,
               onTap: () {
-                if (activeTour != null) {
-                  Navigator.push(
+                _handleModuleTap(
+                  nonCompletedTours: nonCompletedTours,
+                  activeTour: activeTour,
+                  moduleTitle: 'Tracking',
+                  onOpen: (tour) => Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) =>
-                          TourGuideMapScreen(sessionId: activeTour.id),
+                      builder: (_) => TourGuideMapScreen(
+                        sessionId: tour.id,
+                        tourId: tour.id,
+                      ),
                     ),
-                  );
-                } else {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const TourManagementScreen(),
-                    ),
-                  );
-                }
+                  ),
+                );
               },
             ),
             // Messages module with unread badge
             StreamBuilder<int>(
-              stream: activeTour != null
+              stream: (activeTour ?? fallbackTour) != null
                   ? ChatBadgeService.watchUnreadCount(
-                      activeTour.id, guideId)
+                      (activeTour ?? fallbackTour)!.id, guideId)
                   : Stream.value(0),
               builder: (context, chatBadgeSnap) {
                 final unread = chatBadgeSnap.data ?? 0;
@@ -1084,31 +1117,26 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                   iconAsset: 'assets/icons/groupchat.png',
                   color: AppColors.accent,
                   badgeCount: unread,
-                  onTap: () async {
-                    if (activeTour != null) {
-                      // Mark messages as read
-                      ChatBadgeService.updateLastRead(
-                          activeTour.id, guideId);
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => GroupChatScreen(
-                            isCurrentUserGuide: true,
-                            sessionId: activeTour.id,
-                            isReadOnly: activeTour.isCompleted,
+                  onTap: () {
+                    _handleModuleTap(
+                      nonCompletedTours: nonCompletedTours,
+                      activeTour: activeTour,
+                      moduleTitle: 'Group Chat',
+                      onOpen: (tour) async {
+                        ChatBadgeService.updateLastRead(tour.id, guideId);
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => GroupChatScreen(
+                              isCurrentUserGuide: true,
+                              sessionId: tour.id,
+                              isReadOnly: tour.isCompleted,
+                            ),
                           ),
-                        ),
-                      );
-                      ChatBadgeService.updateLastRead(
-                          activeTour.id, guideId);
-                    } else {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const TourManagementScreen(),
-                        ),
-                      );
-                    }
+                        );
+                        ChatBadgeService.updateLastRead(tour.id, guideId);
+                      },
+                    );
                   },
                 );
               },
@@ -1120,23 +1148,19 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
               subtitle: 'Emergency logs',
               iconAsset: 'assets/icons/sos.png',
               onTap: () {
-                if (activeTour != null) {
-                  Navigator.push(
+                _handleModuleTap(
+                  nonCompletedTours: nonCompletedTours,
+                  activeTour: activeTour,
+                  moduleTitle: 'SOS Log',
+                  onOpen: (tour) => Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => SosScreen(
-                        sessionId: activeTour.id,
+                        sessionId: tour.id,
                       ),
                     ),
-                  );
-                } else {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const TourManagementScreen(),
-                    ),
-                  );
-                }
+                  ),
+                );
               },
             ),
             _buildModuleCard(
@@ -1151,8 +1175,6 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
             ),
           ],
         );
-      },
-    );
   }
 
   Widget _buildModuleCard({
@@ -1248,6 +1270,159 @@ class _TourGuideHomeScreenState extends State<TourGuideHomeScreen>
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                       fontSize: 12, color: AppColors.textSecondary)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleModuleTap({
+    required List<Tour> nonCompletedTours,
+    required Tour? activeTour,
+    required String moduleTitle,
+    required void Function(Tour tour) onOpen,
+  }) {
+    if (nonCompletedTours.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'No active or upcoming tours found. Create a tour first.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const TourManagementScreen(),
+        ),
+      );
+      return;
+    }
+
+    if (activeTour != null) {
+      onOpen(activeTour);
+      return;
+    }
+
+    if (nonCompletedTours.length == 1) {
+      onOpen(nonCompletedTours.first);
+      return;
+    }
+
+    // Multiple non-completed tours → show tour picker
+    _showTourPicker(
+      tours: nonCompletedTours,
+      title: 'Select Tour for $moduleTitle',
+      subtitle: 'Choose which tour to open $moduleTitle for',
+      onSelected: onOpen,
+    );
+  }
+
+  void _showTourPicker({
+    required List<Tour> tours,
+    required String title,
+    required String subtitle,
+    required void Function(Tour tour) onSelected,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: tours.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final tour = tours[index];
+                    return ListTile(
+                      tileColor: AppColors.surface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.grey.shade200),
+                      ),
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.tour,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                      ),
+                      title: Text(
+                        tour.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      subtitle: Text(
+                        '${tour.status.toUpperCase()} • ${tour.accessCode}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: tour.isActive
+                              ? AppColors.primary
+                              : AppColors.textSecondary,
+                          fontWeight: tour.isActive
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      trailing: const Icon(
+                        Icons.chevron_right,
+                        color: AppColors.textSecondary,
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        onSelected(tour);
+                      },
+                    );
+                  },
+                ),
+              ),
             ],
           ),
         ),

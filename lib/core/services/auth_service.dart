@@ -36,6 +36,8 @@ class AuthService {
     required String username,
     required String password,
     String status = 'approved',
+    String tourGuideType = 'local',
+    String verificationStatus = 'verified',
     String? idPhotoUrl,
   }) async {
     // Build a display-friendly full name
@@ -71,6 +73,9 @@ class AuthService {
       'address': address.trim(),
       'tourGuideId': tourGuideId.trim(),
       'idType': idType.trim(),
+      'tourGuideType': tourGuideType,
+      'verificationStatus': verificationStatus,
+      'verifiedAt': FieldValue.serverTimestamp(),
       'username': username.trim(),
       'status': status,
       'role': 'tour_guide',
@@ -182,6 +187,8 @@ class AuthService {
     required String address,
     required String username,
     required String idType,
+    String tourGuideType = 'local',
+    String verificationStatus = 'verified',
     String? idPhotoUrl,
     String? photoUrl,
   }) async {
@@ -204,6 +211,9 @@ class AuthService {
       'address': address.trim(),
       'username': username.trim(),
       'idType': idType.trim(),
+      'tourGuideType': tourGuideType,
+      'verificationStatus': verificationStatus,
+      'verifiedAt': FieldValue.serverTimestamp(),
       'status': 'approved',
       'role': 'tour_guide',
       'isProfileComplete': true,

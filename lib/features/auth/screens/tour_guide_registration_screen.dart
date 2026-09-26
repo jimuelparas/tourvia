@@ -261,49 +261,69 @@ class _TourGuideRegistrationScreenState
       return;
     }
 
-    // ID Type and photo are optional (Barangay ID or DOT ID)
+    // Strictly require ID type and ID photo upload
+    if (_selectedIdType == null || _selectedIdType!.isEmpty) {
+      _showError(AppStrings.idRequired);
+      return;
+    }
+    if (_selectedIdType == 'DOT Tour Guide ID' &&
+        _tourGuideIdCtrl.text.trim().isEmpty) {
+      _showError('DOT Tour Guide ID Number is required.');
+      return;
+    }
+    if (_selectedIdImageBytes == null) {
+      _showError(AppStrings.idPhotoRequired);
+      return;
+    }
+
     setState(() {
       _isSubmitting = true;
-      _isVerifying = _selectedIdImageBytes != null;
+      _isVerifying = true;
     });
 
     try {
-      String status = 'approved';
+      final isDot = _selectedIdType == 'DOT Tour Guide ID';
+      final mimeType = _selectedIdImage?.mimeType ?? 'image/jpeg';
+      final registeredFullName =
+          '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}';
 
-      // Step 1/9: If ID photo is provided, verify with Gemini Vision AI passing idType
-      if (_selectedIdImageBytes != null) {
-        final mimeType = _selectedIdImage?.mimeType ?? 'image/jpeg';
-        final result = await GeminiVisionService.verifyTourGuideId(
-          _selectedIdImageBytes!,
-          idType: _selectedIdType ?? 'Philippine Government ID',
-          mimeType: mimeType,
-        );
+      // Verify with Gemini Vision AI against selected ID type and registered name
+      final result = await GeminiVisionService.verifyTourGuideId(
+        _selectedIdImageBytes!,
+        idType: _selectedIdType!,
+        expectedName: registeredFullName,
+        mimeType: mimeType,
+      );
 
+      if (!mounted) return;
+      setState(() => _isVerifying = false);
+
+      if (!result.isVerified) {
+        setState(() => _isSubmitting = false);
+        final lockoutStatus =
+            await LockoutService.recordFailure(LockoutType.guideRegistration);
         if (!mounted) return;
-        setState(() => _isVerifying = false);
+        setState(() => _lockoutStatus = lockoutStatus);
 
-        if (!result.isVerified) {
-          setState(() => _isSubmitting = false);
-          final lockoutStatus = await LockoutService.recordFailure(LockoutType.guideRegistration);
-          if (!mounted) return;
-          setState(() => _lockoutStatus = lockoutStatus);
-
-          if (lockoutStatus.isLocked) {
-            _startLockoutCountdown();
-            _showLockoutDialog(lockoutStatus.formattedRemainingTime);
-          } else {
-            final reason = result.failureReason ?? _buildFailureReason(result);
-            _showVerificationFailedDialog(
-              '$reason\n\n(${lockoutStatus.remainingAttempts} attempt${lockoutStatus.remainingAttempts == 1 ? '' : 's'} remaining before 15-minute lockout)',
-            );
-          }
-          return;
+        if (lockoutStatus.isLocked) {
+          _startLockoutCountdown();
+          _showLockoutDialog(lockoutStatus.formattedRemainingTime);
+        } else {
+          final reason = _buildFailureReason(result);
+          _showVerificationFailedDialog(
+            '$reason\n\n(${lockoutStatus.remainingAttempts} attempt${lockoutStatus.remainingAttempts == 1 ? '' : 's'} remaining before 15-minute lockout)',
+          );
         }
-
-        status = 'approved';
+        return;
       }
 
-      // Steps 2, 5, 18: Register with birthDate + age + idType (phone normalized in auth_service)
+      // ID and identity successfully verified
+      // DOT -> idType: 'dot', tourGuideType: 'verified'
+      // Barangay -> idType: 'barangay', tourGuideType: 'local'
+      final dbIdType = isDot ? 'dot' : 'barangay';
+      final dbTourGuideType = isDot ? 'verified' : 'local';
+      const dbVerificationStatus = 'verified';
+
       await AuthService.registerTourGuide(
         firstName: _firstNameCtrl.text,
         middleName: _middleNameCtrl.text,
@@ -313,11 +333,13 @@ class _TourGuideRegistrationScreenState
         email: _emailCtrl.text,
         contactNumber: _contactCtrl.text,
         address: _addressCtrl.text,
-        tourGuideId: _tourGuideIdCtrl.text,
-        idType: _selectedIdType ?? '',
+        tourGuideId: isDot ? _tourGuideIdCtrl.text : '',
+        idType: dbIdType,
+        tourGuideType: dbTourGuideType,
+        verificationStatus: dbVerificationStatus,
         username: _usernameCtrl.text,
         password: _passwordCtrl.text,
-        status: status,
+        status: 'approved',
       );
 
       if (!mounted) return;
@@ -431,10 +453,18 @@ class _TourGuideRegistrationScreenState
   }
 
   String _buildFailureReason(GeminiIdVerificationResult result) {
+    if (result.isTypeMismatch) {
+      return AppStrings.idTypeMismatch;
+    }
     final reasons = <String>[];
-    if (!result.isOfficialDotId) {
+    if (!result.isValidId) {
       reasons.add(
-        'The uploaded image does not appear to be an official DOT Tour Guide ID.',
+        'The uploaded document is not a valid or readable ${_selectedIdType ?? 'ID'}.',
+      );
+    }
+    if (!result.isNameMatch) {
+      reasons.add(
+        'The identity information on the ID does not match your registration name.',
       );
     }
     if (result.isExpired) {
@@ -447,9 +477,12 @@ class _TourGuideRegistrationScreenState
         'The uploaded image is unclear, blurry, or cropped. Please upload a clear, complete photo.',
       );
     }
+    if (reasons.isEmpty && result.failureReason != null) {
+      return result.failureReason!;
+    }
     return reasons.isNotEmpty
         ? reasons.join('\n\n')
-        : 'Verification failed. Please try again with a valid ID.';
+        : AppStrings.idRequired;
   }
 
   void _showVerificationFailedDialog(String reason) {
@@ -718,19 +751,48 @@ class _TourGuideRegistrationScreenState
   // ── ID Photo Upload (Steps 7, 8) ─────────────────────────
 
   Widget _buildIdPhotoUpload() {
+    final isDotSelected = _selectedIdType == 'DOT Tour Guide ID';
+    final isBarangaySelected =
+        _selectedIdType == 'Barangay ID' || _selectedIdType == 'Barangay ID / Barangay Clearance';
+
+    final label = isDotSelected
+        ? 'DOT Tour Guide ID Photo'
+        : isBarangaySelected
+            ? 'Barangay ID Photo'
+            : AppStrings.idPhotoLabel;
+
+    final hint = isDotSelected
+        ? 'Upload a clear, readable photo of your official DOT ID.'
+        : isBarangaySelected
+            ? 'Upload a clear photo of your Barangay ID with photo.'
+            : 'Select an ID type above, then upload a clear photo of your ID.';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          AppStrings.idPhotoLabel,
-          style: Theme.of(context).textTheme.labelMedium,
+        Row(
+          children: [
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const Text(
+              ' *',
+              style: TextStyle(
+                color: AppColors.error,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 4),
         Text(
-          'Upload a clear photo of your selected ID.',
+          hint,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: AppColors.textSecondary,
-          ),
+                color: AppColors.textSecondary,
+              ),
         ),
         const SizedBox(height: 8),
         InkWell(
@@ -742,7 +804,7 @@ class _TourGuideRegistrationScreenState
                   children: [
                     ListTile(
                       leading: const Icon(Icons.camera_alt),
-                      title: const Text('Camera'),
+                      title: const Text('Take Photo with Camera'),
                       onTap: () {
                         _captureIdImage();
                         Navigator.pop(ctx);
@@ -750,7 +812,7 @@ class _TourGuideRegistrationScreenState
                     ),
                     ListTile(
                       leading: const Icon(Icons.photo_library),
-                      title: const Text('Gallery'),
+                      title: const Text('Choose from Gallery'),
                       onTap: () {
                         _pickIdImage();
                         Navigator.pop(ctx);
@@ -761,33 +823,88 @@ class _TourGuideRegistrationScreenState
               ),
             );
           },
+          borderRadius: BorderRadius.circular(12),
           child: Container(
-            height: 120,
+            height: 130,
             width: double.infinity,
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.5),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.3),
+                color: _selectedIdImageBytes != null
+                    ? AppColors.primary
+                    : AppColors.primary.withValues(alpha: 0.3),
+                width: _selectedIdImageBytes != null ? 1.5 : 1,
               ),
             ),
             child: _selectedIdImageBytes != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.memory(
-                      _selectedIdImageBytes!,
-                      fit: BoxFit.cover,
-                    ),
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(11),
+                        child: Image.memory(
+                          _selectedIdImageBytes!,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(
+                                Icons.refresh_rounded,
+                                color: Colors.white,
+                                size: 14,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Change Photo',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   )
                 : Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.add_a_photo,
-                          color: AppColors.primary.withValues(alpha: 0.7)),
+                      Icon(
+                        Icons.add_a_photo_outlined,
+                        color: AppColors.primary.withValues(alpha: 0.8),
+                        size: 30,
+                      ),
                       const SizedBox(height: 6),
                       Text(
-                        'Tap to upload your ID photo',
-                        style: Theme.of(context).textTheme.bodySmall,
+                        'Tap to upload required ID photo',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'JPG, PNG (Max 1920px)',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ),
@@ -889,11 +1006,25 @@ class _TourGuideRegistrationScreenState
           ),
           const SizedBox(height: 18),
 
-          // Step 8: ID Type Dropdown
-          _buildIdTypeDropdown(),
+          // Mandatory Tour Guide ID Selection & Upload
+          _buildIdTypeSelection(),
           const SizedBox(height: 18),
 
-          // ID Photo Upload (Step 7)
+          // DOT Tour Guide ID Number (Required text input for DOT)
+          if (_selectedIdType == 'DOT Tour Guide ID') ...[
+            CustomTextField(
+              controller: _tourGuideIdCtrl,
+              label: 'DOT Tour Guide ID Number',
+              hint: 'e.g. TG-2026-0001',
+              helperText: 'Enter your DOT accreditation ID number',
+              prefixIcon: Icons.badge_outlined,
+              textInputAction: TextInputAction.next,
+              validator: _requiredValidator,
+            ),
+            const SizedBox(height: 18),
+          ],
+
+          // ID Photo Upload (Mandatory)
           _buildIdPhotoUpload(),
           const SizedBox(height: 18),
 
@@ -1073,52 +1204,114 @@ class _TourGuideRegistrationScreenState
     );
   }
 
-  // Step 8: ID Type dropdown
-  Widget _buildIdTypeDropdown() {
+  // ── ID Type Selection (Mandatory Dropdown) ───────────────
+  Widget _buildIdTypeSelection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          AppStrings.idTypeLabel,
-          style: Theme.of(context).textTheme.labelMedium,
-        ),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: _selectedIdType == null
-                  ? AppColors.primary.withValues(alpha: 0.3)
-                  : AppColors.primary.withValues(alpha: 0.6),
+        DropdownButtonFormField<String>(
+          initialValue: _selectedIdType,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: '${AppStrings.idTypeLabel} *',
+            hintText: 'Choose an ID type',
+            prefixIcon: const Icon(
+              Icons.badge_outlined,
+              size: 22,
+              color: AppColors.textSecondary,
             ),
+            helperText: _selectedIdType == 'DOT Tour Guide ID'
+                ? 'Department of Tourism (DOT) Accredited Tour Guide ID card.'
+                : _selectedIdType == 'Barangay ID'
+                    ? 'Official Barangay Government-issued ID with photo.'
+                    : 'Select your Tour Guide qualification ID type',
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: _selectedIdType,
-              hint: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  AppStrings.idTypeHint,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              borderRadius: BorderRadius.circular(12),
-              items: AppStrings.validIdTypes
-                  .map(
-                    (type) => DropdownMenuItem<String>(
-                      value: type,
-                      child: Text(type),
+          items: [
+            DropdownMenuItem(
+              value: 'DOT Tour Guide ID',
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'DOT Tour Guide ID',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
-                  )
-                  .toList(),
-              onChanged: (val) => setState(() => _selectedIdType = val),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'Verified Tour Guide',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+            DropdownMenuItem(
+              value: 'Barangay ID',
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Barangay ID',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'Local Tour Guide',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedIdType = value;
+              // Reset uploaded photo when switching ID type
+              _selectedIdImage = null;
+              _selectedIdImageBytes = null;
+            });
+          },
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return AppStrings.idRequired;
+            }
+            return null;
+          },
         ),
       ],
     );

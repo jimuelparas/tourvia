@@ -32,6 +32,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   String? _username;
   String? _profilePhotoUrl;
   Uint8List? _newPhotoBytes;
+  String? _tourGuideType;
+  String? _idType;
 
   // Password change
   final _passwordFormKey = GlobalKey<FormState>();
@@ -108,6 +110,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         _tourGuideId = profile['tourGuideId'] as String?;
         _username = profile['username'] as String?;
         _profilePhotoUrl = profile['profilePhotoUrl'] as String?;
+        _tourGuideType = profile['tourGuideType'] as String?;
+        _idType = profile['idType'] as String?;
       }
       setState(() => _isLoading = false);
       _fadeController.forward();
@@ -504,7 +508,55 @@ class _ProfileScreenState extends State<ProfileScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSectionLabel('Personal Information'),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
+
+            if (_tourGuideType != null) ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: _tourGuideType == 'verified'
+                      ? AppColors.primary.withValues(alpha: 0.1)
+                      : Colors.teal.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _tourGuideType == 'verified'
+                        ? AppColors.primary.withValues(alpha: 0.3)
+                        : Colors.teal.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _tourGuideType == 'verified'
+                          ? Icons.verified_rounded
+                          : Icons.shield_outlined,
+                      size: 16,
+                      color: _tourGuideType == 'verified'
+                          ? AppColors.primary
+                          : Colors.teal,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _tourGuideType == 'verified'
+                          ? 'Verified Tour Guide (DOT Accredited)'
+                          : 'Local Tour Guide (Barangay Verified)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _tourGuideType == 'verified'
+                            ? AppColors.primary
+                            : Colors.teal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+            ] else ...[
+              const SizedBox(height: 4),
+            ],
 
             // First Name
             _buildFormField(
@@ -579,13 +631,27 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ],
 
+            // Registered ID Type (read-only)
+            if (_idType != null && _idType!.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              _buildReadOnlyField(
+                label: 'Registered ID Type',
+                value: _idType == 'dot'
+                    ? 'DOT Tour Guide ID'
+                    : _idType == 'barangay'
+                        ? 'Barangay ID'
+                        : _idType!,
+                icon: Icons.badge_outlined,
+              ),
+            ],
+
             // Tour Guide ID (read-only)
             if (_tourGuideId != null && _tourGuideId!.isNotEmpty) ...[
               const SizedBox(height: 14),
               _buildReadOnlyField(
-                label: 'DOT Tour Guide ID',
+                label: 'DOT Tour Guide ID Number',
                 value: _tourGuideId!,
-                icon: Icons.badge_outlined,
+                icon: Icons.confirmation_number_outlined,
               ),
             ],
           ],

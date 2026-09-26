@@ -215,6 +215,16 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
       return;
     }
 
+    // Strictly require ID type and ID photo upload
+    if (_selectedIdType == null || _selectedIdType!.isEmpty) {
+      setState(() => _submitError = AppStrings.idRequired);
+      return;
+    }
+    if (_selectedIdImageBytes == null) {
+      setState(() => _submitError = AppStrings.idPhotoRequired);
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) return;
 
     final lockoutStatus =
@@ -227,36 +237,48 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
 
     setState(() {
       _isSubmitting = true;
-      _isVerifying = _selectedIdImageBytes != null;
+      _isVerifying = true;
     });
 
     try {
-      // If ID photo is provided, verify with Gemini AI
-      if (_selectedIdImageBytes != null) {
-        final mimeType = _selectedIdImage?.mimeType ?? 'image/jpeg';
-        final result = await GeminiVisionService.verifyTourGuideId(
-          _selectedIdImageBytes!,
-          idType: _selectedIdType ?? 'Philippine Government ID',
-          mimeType: mimeType,
-        );
+      final isDot = _selectedIdType == 'DOT Tour Guide ID';
+      final mimeType = _selectedIdImage?.mimeType ?? 'image/jpeg';
+      final registeredFullName =
+          '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}';
 
+      // Verify ID photo with Gemini AI
+      final result = await GeminiVisionService.verifyTourGuideId(
+        _selectedIdImageBytes!,
+        idType: _selectedIdType!,
+        expectedName: registeredFullName,
+        mimeType: mimeType,
+      );
+
+      if (!mounted) return;
+      setState(() => _isVerifying = false);
+
+      if (!result.isVerified) {
+        final failStatus = await LockoutService.recordFailure(
+            LockoutType.guideRegistration);
         if (!mounted) return;
-        setState(() => _isVerifying = false);
-
-        if (!result.isVerified) {
-          final failStatus = await LockoutService.recordFailure(
-              LockoutType.guideRegistration);
-          if (!mounted) return;
-          setState(() {
-            _isSubmitting = false;
-            _lockoutStatus = failStatus;
-            _submitError = result.failureReason ??
-                'ID verification failed. Please try again with a clear photo.';
-          });
-          if (failStatus.isLocked) _startLockoutCountdown();
-          return;
-        }
+        final errorMsg = result.isTypeMismatch
+            ? AppStrings.idTypeMismatch
+            : (result.failureReason ??
+                'ID verification failed. Please try again with a clear, valid photo.');
+        setState(() {
+          _isSubmitting = false;
+          _lockoutStatus = failStatus;
+          _submitError =
+              '$errorMsg (${failStatus.remainingAttempts} attempt${failStatus.remainingAttempts == 1 ? '' : 's'} remaining before lockout)';
+        });
+        if (failStatus.isLocked) _startLockoutCountdown();
+        return;
       }
+
+      // ID successfully verified
+      final dbIdType = isDot ? 'dot' : 'barangay';
+      final dbTourGuideType = isDot ? 'verified' : 'local';
+      const dbVerificationStatus = 'verified';
 
       // Save complete profile — sets isProfileComplete: true
       await AuthService.completeGoogleProfile(
@@ -270,7 +292,9 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
         contactNumber: _contactCtrl.text,
         address: _addressCtrl.text,
         username: _usernameCtrl.text,
-        idType: _selectedIdType ?? '',
+        idType: dbIdType,
+        tourGuideType: dbTourGuideType,
+        verificationStatus: dbVerificationStatus,
         photoUrl: widget.photoUrl.isNotEmpty ? widget.photoUrl : null,
       );
 
@@ -583,7 +607,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
           ),
           const SizedBox(height: 18),
 
-          _buildIdTypeDropdown(),
+          _buildIdTypeSelection(),
           const SizedBox(height: 18),
 
           _buildIdPhotoUpload(),
@@ -743,63 +767,157 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
     );
   }
 
-  Widget _buildIdTypeDropdown() {
+  Widget _buildIdTypeSelection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(AppStrings.idTypeLabel,
-            style: Theme.of(context).textTheme.labelMedium),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: _selectedIdType == null
-                  ? AppColors.primary.withValues(alpha: 0.3)
-                  : AppColors.primary.withValues(alpha: 0.6),
+        DropdownButtonFormField<String>(
+          initialValue: _selectedIdType,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: '${AppStrings.idTypeLabel} *',
+            hintText: 'Choose an ID type',
+            prefixIcon: const Icon(
+              Icons.badge_outlined,
+              size: 22,
+              color: AppColors.textSecondary,
             ),
+            helperText: _selectedIdType == 'DOT Tour Guide ID'
+                ? 'Department of Tourism (DOT) Accredited Tour Guide ID card.'
+                : _selectedIdType == 'Barangay ID'
+                    ? 'Official Barangay Government-issued ID with photo.'
+                    : 'Select your Tour Guide qualification ID type',
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: _selectedIdType,
-              hint: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  AppStrings.idTypeHint,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textSecondary,
+          items: [
+            DropdownMenuItem(
+              value: 'DOT Tour Guide ID',
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'DOT Tour Guide ID',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
                       ),
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              borderRadius: BorderRadius.circular(12),
-              items: AppStrings.validIdTypes
-                  .map(
-                    (type) => DropdownMenuItem<String>(
-                      value: type,
-                      child: Text(type),
                     ),
-                  )
-                  .toList(),
-              onChanged: (val) => setState(() => _selectedIdType = val),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'Verified Tour Guide',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+            DropdownMenuItem(
+              value: 'Barangay ID',
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Barangay ID',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'Local Tour Guide',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedIdType = value;
+              _selectedIdImage = null;
+              _selectedIdImageBytes = null;
+            });
+          },
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return AppStrings.idRequired;
+            }
+            return null;
+          },
         ),
       ],
     );
   }
 
   Widget _buildIdPhotoUpload() {
+    final isDotSelected = _selectedIdType == 'DOT Tour Guide ID';
+    final isBarangaySelected =
+        _selectedIdType == 'Barangay ID' || _selectedIdType == 'Barangay ID / Barangay Clearance';
+
+    final label = isDotSelected
+        ? 'DOT Tour Guide ID Photo'
+        : isBarangaySelected
+            ? 'Barangay ID Photo'
+            : AppStrings.idPhotoLabel;
+
+    final hint = isDotSelected
+        ? 'Upload a clear, readable photo of your official DOT ID.'
+        : isBarangaySelected
+            ? 'Upload a clear photo of your Barangay ID with photo.'
+            : 'Select an ID type above, then upload a clear photo of your ID.';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(AppStrings.idPhotoLabel,
-            style: Theme.of(context).textTheme.labelMedium),
+        Row(
+          children: [
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const Text(
+              ' *',
+              style: TextStyle(
+                color: AppColors.error,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 4),
         Text(
-          'Upload a clear, complete photo of your selected ID.',
+          hint,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -814,7 +932,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
                   children: [
                     ListTile(
                       leading: const Icon(Icons.camera_alt),
-                      title: const Text('Camera'),
+                      title: const Text('Take Photo with Camera'),
                       onTap: () {
                         _captureIdImage();
                         Navigator.pop(ctx);
@@ -822,7 +940,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
                     ),
                     ListTile(
                       leading: const Icon(Icons.photo_library),
-                      title: const Text('Gallery'),
+                      title: const Text('Choose from Gallery'),
                       onTap: () {
                         _pickIdImage();
                         Navigator.pop(ctx);
@@ -833,6 +951,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
               ),
             );
           },
+          borderRadius: BorderRadius.circular(12),
           child: Container(
             height: 140,
             width: double.infinity,
@@ -841,40 +960,79 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: _selectedIdImageBytes != null
-                    ? AppColors.success.withValues(alpha: 0.5)
+                    ? AppColors.primary
                     : AppColors.primary.withValues(alpha: 0.3),
-                width: _selectedIdImageBytes != null ? 2 : 1,
+                width: _selectedIdImageBytes != null ? 1.5 : 1,
               ),
             ),
             child: _selectedIdImageBytes != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.memory(
-                      _selectedIdImageBytes!,
-                      fit: BoxFit.cover,
-                    ),
+                ? Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(11),
+                        child: Image.memory(
+                          _selectedIdImageBytes!,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(
+                                Icons.refresh_rounded,
+                                color: Colors.white,
+                                size: 14,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Change Photo',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   )
                 : Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.add_a_photo,
-                          color: AppColors.primary.withValues(alpha: 0.7),
-                          size: 32),
+                      Icon(
+                        Icons.add_a_photo_outlined,
+                        color: AppColors.primary.withValues(alpha: 0.8),
+                        size: 32,
+                      ),
                       const SizedBox(height: 8),
                       Text(
-                        'Tap to upload your ID photo',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Optional for identity verification',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(
-                              color: AppColors.textSecondary,
-                              fontSize: 11,
+                        'Tap to upload required ID photo',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.w500,
                             ),
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'JPG, PNG (Max 1920px)',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ],
                   ),

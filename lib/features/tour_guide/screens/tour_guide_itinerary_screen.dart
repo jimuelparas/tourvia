@@ -10,6 +10,7 @@ import '../../../core/services/attendance_service.dart';
 import '../../../core/services/itinerary_service.dart';
 import '../../../core/services/tour_service.dart';
 import '../../../core/services/tour_session_service.dart';
+import '../../../core/services/tour_status_resolver.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../itinerary/models/itinerary_item.dart';
 import 'add_edit_itinerary_screen.dart';
@@ -40,7 +41,6 @@ class TourGuideItineraryScreen extends StatefulWidget {
 
 class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
   final Set<String> _deletingIds = {};
-  bool _fabExpanded = false;
   Tour? _tour;
   Timer? _clockTimer;
 
@@ -48,6 +48,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
   void initState() {
     super.initState();
     _loadTour();
+    ItineraryService.syncChronologicalOrder(widget.effectiveId);
     // Periodically re-evaluate time-based status (upcoming -> ongoing -> completed)
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
@@ -66,7 +67,6 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
   }
 
   Future<void> _navigateToAddEdit({ItineraryItem? item}) async {
-    setState(() => _fabExpanded = false);
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AddEditItineraryScreen(
@@ -74,6 +74,8 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
           sessionId: widget.effectiveId,
           tourStartDate: _tour?.startDate,
           tourEndDate: _tour?.endDate,
+          tourStartDateTime: _tour != null ? TourStatusResolver.getTourStartDateTime(_tour!) : null,
+          tourEndDateTime: _tour != null ? TourStatusResolver.getTourEndDateTime(_tour!) : null,
         ),
       ),
     );
@@ -111,25 +113,6 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
       );
     } finally {
       if (mounted) setState(() => _deletingIds.remove(stop.id));
-    }
-  }
-
-  Future<void> _onReorder(List<ItineraryItem> stops, int oldIndex, int newIndex) async {
-    if (newIndex > oldIndex) newIndex -= 1;
-    final reordered = List<ItineraryItem>.from(stops);
-    final moved = reordered.removeAt(oldIndex);
-    reordered.insert(newIndex, moved);
-
-    try {
-      await ItineraryService.reorderStops(
-        widget.effectiveId,
-        reordered.map((s) => s.id).toList(),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save new order.')),
-      );
     }
   }
 
@@ -176,46 +159,6 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to mark stop as done.')),
       );
-    }
-  }
-
-  Future<void> _confirmEndTour() async {
-    setState(() => _fabExpanded = false);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('End Tour?'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('This will:'),
-            SizedBox(height: 8),
-            Text('✔ Stop Live Tracking'),
-            Text('✔ Disable Access Code'),
-            Text('✔ Finish Attendance'),
-            Text('✔ Archive Tour'),
-            Text('✔ Generate Tour Summary'),
-            Text('✔ Return to Dashboard'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
-            child: const Text('End Tour'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
 
@@ -269,7 +212,7 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                         Expanded(child: _buildTimeline(stops)),
                       ],
                     ),
-              floatingActionButton: _buildExpandableFab(),
+              floatingActionButton: stops.isEmpty ? null : _buildFab(),
             );
           },
         );
@@ -277,40 +220,13 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     );
   }
 
-  Widget _buildExpandableFab() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.end,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        if (_fabExpanded) ...[
-          FloatingActionButton.extended(
-            heroTag: 'addStop',
-            onPressed: _navigateToAddEdit,
-            backgroundColor: AppColors.primary,
-            icon: const Icon(Icons.add_location_alt_rounded, color: Colors.white),
-            label: const Text('Add Stop', style: TextStyle(color: Colors.white)),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton.extended(
-            heroTag: 'endTour',
-            onPressed: _confirmEndTour,
-            backgroundColor: AppColors.error,
-            icon: const Icon(Icons.flag_rounded, color: Colors.white),
-            label: const Text('End Tour', style: TextStyle(color: Colors.white)),
-          ),
-          const SizedBox(height: 16),
-        ],
-        FloatingActionButton(
-          heroTag: 'mainFab',
-          onPressed: () => setState(() => _fabExpanded = !_fabExpanded),
-          backgroundColor: AppColors.primary,
-          child: AnimatedRotation(
-            turns: _fabExpanded ? 0.125 : 0, // 45 degrees
-            duration: const Duration(milliseconds: 200),
-            child: const Icon(Icons.add_rounded, color: Colors.white),
-          ),
-        ),
-      ],
+  Widget _buildFab() {
+    return FloatingActionButton.extended(
+      heroTag: 'addStop',
+      onPressed: _navigateToAddEdit,
+      backgroundColor: AppColors.primary,
+      icon: const Icon(Icons.add_location_alt_rounded, color: Colors.white),
+      label: const Text('Add Stop', style: TextStyle(color: Colors.white)),
     );
   }
 
@@ -378,30 +294,122 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
     );
   }
 
+  int _getDayNumber(ItineraryItem stop, List<ItineraryItem> allStops) {
+    if (_tour != null) {
+      final dn = _tour!.dayNumberForDate(stop.date);
+      if (dn > 0) return dn;
+    }
+    final uniqueDates = allStops
+        .map((s) => DateTime(s.date.year, s.date.month, s.date.day))
+        .toSet()
+        .toList()
+      ..sort();
+    final stopDate = DateTime(stop.date.year, stop.date.month, stop.date.day);
+    final idx = uniqueDates.indexOf(stopDate);
+    return idx >= 0 ? idx + 1 : 1;
+  }
+
+  int _getStopNumberInDay(int index, List<ItineraryItem> allStops) {
+    final current = allStops[index];
+    int count = 0;
+    for (int i = 0; i <= index; i++) {
+      final s = allStops[i];
+      if (s.date.year == current.date.year &&
+          s.date.month == current.date.month &&
+          s.date.day == current.date.day) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  bool _isFirstStopOfDay(int index, List<ItineraryItem> allStops) {
+    if (index == 0) return true;
+    final current = allStops[index];
+    final prev = allStops[index - 1];
+    return current.date.year != prev.date.year ||
+        current.date.month != prev.date.month ||
+        current.date.day != prev.date.day;
+  }
+
+  Widget _buildDayHeader(int dayNumber, DateTime date) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18, bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.25),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.calendar_today_rounded, size: 13, color: Colors.white),
+                const SizedBox(width: 6),
+                Text(
+                  'DAY $dayNumber',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            Tour.formatDate(date),
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Divider(color: Colors.grey.shade300, height: 1),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTimeline(List<ItineraryItem> stops) {
-    return ReorderableListView.builder(
+    return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       itemCount: stops.length,
-      onReorder: (oldIndex, newIndex) => _onReorder(stops, oldIndex, newIndex),
       itemBuilder: (_, index) => _buildStopCard(stops[index], index, stops),
     );
   }
 
   Widget _buildStopCard(ItineraryItem stop, int index, List<ItineraryItem> stops) {
-    final isFirst = index == 0;
     final isLast = index == stops.length - 1;
     final isDeleting = _deletingIds.contains(stop.id);
     final currentStatus = stop.effectiveStatus;
+    final isNewDay = _isFirstStopOfDay(index, stops);
+    final dayNumber = _getDayNumber(stop, stops);
+    final stopNumberInDay = _getStopNumberInDay(index, stops);
+    final isLastInDay = isLast || _isFirstStopOfDay(index + 1, stops);
 
-    return IntrinsicHeight(
-      key: ValueKey(stop.id),
+    final cardContent = IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Vertical Timeline Spine ──
           Column(
             children: [
-              if (!isFirst) Container(width: 2, height: 20, color: AppColors.primarySurface),
+              if (!isNewDay) Container(width: 2, height: 20, color: AppColors.primarySurface),
               Container(
                 width: 32,
                 height: 32,
@@ -416,17 +424,23 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
                 child: Center(
                   child: currentStatus == ItineraryStatus.completed
                       ? const Icon(Icons.check, color: Colors.white, size: 16)
-                      : Text('${index + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      : Text(
+                          '$stopNumberInDay',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
-              if (!isLast) Expanded(child: Container(width: 2, color: AppColors.primarySurface)),
+              if (!isLastInDay) Expanded(child: Container(width: 2, color: AppColors.primarySurface)),
             ],
           ),
           const SizedBox(width: 12),
           // ── Main Card ──
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 8, top: isFirst ? 0 : 20),
+              padding: EdgeInsets.only(bottom: isLastInDay ? 12 : 8, top: isNewDay ? 0 : 20),
               child: Opacity(
                 opacity: isDeleting ? 0.5 : 1.0,
                 child: Column(
@@ -570,6 +584,15 @@ class _TourGuideItineraryScreenState extends State<TourGuideItineraryScreen> {
           ),
         ],
       ),
+    );
+
+    return Column(
+      key: ValueKey(stop.id),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (isNewDay) _buildDayHeader(dayNumber, stop.date),
+        cardContent,
+      ],
     );
   }
 

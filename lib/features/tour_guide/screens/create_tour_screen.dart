@@ -3,8 +3,9 @@ import 'package:flutter/services.dart';
 import '../../../core/models/tour_model.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/tour_service.dart';
+import '../../../core/services/tour_status_resolver.dart';
 import '../../../core/theme/app_colors.dart';
-import 'tour_hub_screen.dart';
+import 'tour_management_screen.dart';
 import 'tour_guide_itinerary_screen.dart';
 
 /// Screen for creating a new tour (REV-002 Section 3).
@@ -27,6 +28,8 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
 
   DateTime? _startDate;
   DateTime? _endDate;
+  TimeOfDay? _startTime;
+  TimeOfDay? _endTime;
   int _totalDays = 1;
 
   bool _isCheckingConflict = false;
@@ -45,6 +48,19 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
       _startDate = t.startDate.toLocal();
       _endDate = t.endDate.toLocal();
       _totalDays = t.totalDays;
+      // Pre-populate times when editing
+      if (t.startTime != null && t.startTime!.trim().isNotEmpty) {
+        final parsed = TourStatusResolver.parseTimeOfDay(t.startTime!);
+        if (parsed != null) {
+          _startTime = TimeOfDay(hour: parsed.hour, minute: parsed.minute);
+        }
+      }
+      if (t.endTime != null && t.endTime!.trim().isNotEmpty) {
+        final parsed = TourStatusResolver.parseTimeOfDay(t.endTime!);
+        if (parsed != null) {
+          _endTime = TimeOfDay(hour: parsed.hour, minute: parsed.minute);
+        }
+      }
     }
   }
 
@@ -111,6 +127,50 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
     }
   }
 
+  // ── Time Pickers ────────────────────────────────────────
+
+  Future<void> _pickStartTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _startTime ?? const TimeOfDay(hour: 8, minute: 0),
+      helpText: 'Select Tour Start Time',
+    );
+    if (picked != null) {
+      setState(() => _startTime = picked);
+      await _checkConflict();
+    }
+  }
+
+  Future<void> _pickEndTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _endTime ?? const TimeOfDay(hour: 17, minute: 0),
+      helpText: 'Select Tour End Time',
+    );
+    if (picked != null) {
+      setState(() => _endTime = picked);
+      await _checkConflict();
+    }
+  }
+
+  /// Formats a TimeOfDay to "HH:MM AM/PM" string for display and storage.
+  String _formatTimeOfDay(TimeOfDay t) {
+    final hour = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
+    final minute = t.minute.toString().padLeft(2, '0');
+    final period = t.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
+  /// Builds a full DateTime from a date and optional time.
+  DateTime _buildFullDateTime(DateTime date, TimeOfDay? time, {bool endOfDay = false}) {
+    if (time != null) {
+      return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    }
+    return endOfDay
+        ? DateTime(date.year, date.month, date.day, 23, 59, 59)
+        : DateTime(date.year, date.month, date.day);
+  }
+
   // ── Conflict Check ───────────────────────────────────────
 
   Future<void> _checkConflict() async {
@@ -123,6 +183,8 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
       guideId: guideId,
       startDate: _startDate!,
       endDate: _endDate!,
+      startTime: _startTime != null ? _formatTimeOfDay(_startTime!) : null,
+      endTime: _endTime != null ? _formatTimeOfDay(_endTime!) : null,
       excludeTourId: widget.tourToEdit?.id,
     );
 
@@ -148,6 +210,40 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
       return;
     }
 
+    if (_startTime == null || _endTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select both Start Time and End Time.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    // Validate: End DateTime must not be before Start DateTime
+    final fullStart = _buildFullDateTime(_startDate!, _startTime);
+    final fullEnd = _buildFullDateTime(_endDate!, _endTime);
+    if (fullEnd.isBefore(fullStart)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('End Date/Time cannot be earlier than Start Date/Time.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    // Validate: Cannot create a tour in the past
+    if (!_isEditing && fullStart.isBefore(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tour start cannot be in the past.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     if (_scheduleConflict != null) {
       _showConflictDialog(_scheduleConflict!);
       return;
@@ -155,6 +251,9 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
 
     final guide = AuthService.currentUser;
     if (guide == null) return;
+
+    final startTimeStr = _formatTimeOfDay(_startTime!);
+    final endTimeStr = _formatTimeOfDay(_endTime!);
 
     setState(() => _isSubmitting = true);
 
@@ -166,6 +265,8 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
           endDate: _endDate!,
           totalDays: _totalDays,
           schedule: _scheduleCtrl.text.trim(),
+          startTime: startTimeStr,
+          endTime: endTimeStr,
         );
 
         await TourService.updateTour(updated);
@@ -192,6 +293,8 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
         schedule: _scheduleCtrl.text.trim(),
         guideId: guide.uid,
         guideName: guide.displayName ?? 'Tour Guide',
+        startTime: startTimeStr,
+        endTime: endTimeStr,
       );
 
       if (!mounted) return;
@@ -349,14 +452,15 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
                 child: OutlinedButton(
                   onPressed: () {
                     Navigator.pop(ctx); // close dialog
-                    Navigator.pushReplacement(
+                    Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => TourHubScreen(
-                          tourId: tour.id,
-                          initialTour: tour,
+                        builder: (_) => const TourManagementScreen(
+                          initialTabIndex: 0,
                         ),
                       ),
+                      (route) =>
+                          route.isFirst && route != ModalRoute.of(context),
                     );
                   },
                   style: OutlinedButton.styleFrom(
@@ -426,6 +530,8 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
                 _buildTourNameField(),
                 const SizedBox(height: 18),
                 _buildDateRangeSelectors(),
+                const SizedBox(height: 14),
+                _buildTimeRangeSelectors(),
                 const SizedBox(height: 14),
                 _buildDurationBadge(),
                 if (_isCheckingConflict) ...[
@@ -648,6 +754,108 @@ class _CreateTourScreenState extends State<CreateTourScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTimeRangeSelectors() {
+    return Row(
+      children: [
+        Expanded(
+          child: InkWell(
+            onTap: _pickStartTime,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _startTime != null
+                      ? AppColors.primary.withValues(alpha: 0.5)
+                      : AppColors.border,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Start Time',
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.access_time_rounded,
+                          size: 16, color: AppColors.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _startTime != null
+                              ? _formatTimeOfDay(_startTime!)
+                              : 'Select',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: _startTime != null
+                                ? AppColors.textPrimary
+                                : AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: InkWell(
+            onTap: _pickEndTime,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _endTime != null
+                      ? AppColors.primary.withValues(alpha: 0.5)
+                      : AppColors.border,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('End Time',
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.access_time_filled_rounded,
+                          size: 16, color: AppColors.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _endTime != null
+                              ? _formatTimeOfDay(_endTime!)
+                              : 'Select',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: _endTime != null
+                                ? AppColors.textPrimary
+                                : AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

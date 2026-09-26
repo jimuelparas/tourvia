@@ -8,6 +8,7 @@ import '../../../core/services/attendance_service.dart';
 import '../../../core/services/itinerary_service.dart';
 import '../../../core/services/tour_session_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/models/tour_model.dart';
 import '../../attendance/models/tourist_attendance.dart';
 import '../../itinerary/models/itinerary_item.dart' hide AttendanceStatus;
 
@@ -263,6 +264,93 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
     );
   }
 
+  int _getDayNumber(ItineraryItem stop) {
+    final uniqueDates = _stops
+        .map((s) => DateTime(s.date.year, s.date.month, s.date.day))
+        .toSet()
+        .toList()
+      ..sort();
+    final stopDate = DateTime(stop.date.year, stop.date.month, stop.date.day);
+    final idx = uniqueDates.indexOf(stopDate);
+    return idx >= 0 ? idx + 1 : 1;
+  }
+
+  int _getStopNumberInDay(int index) {
+    final current = _stops[index];
+    int count = 0;
+    for (int i = 0; i <= index; i++) {
+      final s = _stops[i];
+      if (s.date.year == current.date.year &&
+          s.date.month == current.date.month &&
+          s.date.day == current.date.day) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  bool _isFirstStopOfDay(int index) {
+    if (index == 0) return true;
+    final current = _stops[index];
+    final prev = _stops[index - 1];
+    return current.date.year != prev.date.year ||
+        current.date.month != prev.date.month ||
+        current.date.day != prev.date.day;
+  }
+
+  Widget _buildDayHeader(int dayNumber, DateTime date) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18, bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.25),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.calendar_today_rounded, size: 13, color: Colors.white),
+                const SizedBox(width: 6),
+                Text(
+                  'DAY $dayNumber',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            Tour.formatDate(date),
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Divider(color: Colors.grey.shade300, height: 1),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTimeline(BuildContext context) {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -296,15 +384,19 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
     Color nodeColor,
   ) {
     final checkIn = _checkInStr(myRecord);
+    final isNewDay = _isFirstStopOfDay(index);
+    final dayNumber = _getDayNumber(stop);
+    final stopNumberInDay = _getStopNumberInDay(index);
+    final isLastInDay = isLast || _isFirstStopOfDay(index + 1);
 
-    return IntrinsicHeight(
+    final nodeContent = IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ── Timeline spine ──────────────────────────────
           Column(
             children: [
-              if (!isFirst)
+              if (!isNewDay)
                 Container(
                     width: 2,
                     height: 20,
@@ -325,7 +417,7 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    '${index + 1}',
+                    '$stopNumberInDay',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -334,7 +426,7 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
                   ),
                 ),
               ),
-              if (!isLast)
+              if (!isLastInDay)
                 Expanded(
                   child: Container(
                     width: 2,
@@ -348,7 +440,9 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
           Expanded(
             child: Padding(
               padding: EdgeInsets.only(
-                  bottom: isLast ? 0 : 20, top: isFirst ? 0 : 20),
+                bottom: isLastInDay ? 16 : 12,
+                top: isNewDay ? 0 : 16,
+              ),
               child: Container(
                 decoration: BoxDecoration(
                   color: AppColors.surface,
@@ -487,6 +581,15 @@ class _TouristItineraryScreenState extends State<TouristItineraryScreen> {
           ),
         ],
       ),
+    );
+
+    return Column(
+      key: ValueKey(stop.id),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (isNewDay) _buildDayHeader(dayNumber, stop.date),
+        nodeContent,
+      ],
     );
   }
 }

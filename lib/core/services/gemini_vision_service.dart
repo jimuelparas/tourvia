@@ -6,9 +6,14 @@ import 'package:http/http.dart' as http;
 
 /// Result from Gemini Vision ID verification.
 class GeminiIdVerificationResult {
-  /// Whether the uploaded image is a valid Philippine government-issued ID
-  /// matching the declared [idType]. (Replaces isOfficialDotId — Step 7)
+  /// Whether the uploaded image is a valid Philippine government-issued ID.
   final bool isValidId;
+
+  /// Whether the uploaded document does not match the selected ID type.
+  final bool isTypeMismatch;
+
+  /// Whether the name on the ID matches the registered user's name.
+  final bool isNameMatch;
 
   /// The detected/confirmed ID type from the card.
   final String? detectedIdType;
@@ -36,13 +41,20 @@ class GeminiIdVerificationResult {
 
   /// Whether ALL checks passed and the ID is verified.
   bool get isVerified =>
-      isValidId && !isExpired && isImageClear && failureReason == null;
+      isValidId &&
+      !isTypeMismatch &&
+      isNameMatch &&
+      !isExpired &&
+      isImageClear &&
+      failureReason == null;
 
   /// Legacy getter kept for backward compatibility with existing UI code.
-  bool get isOfficialDotId => isValidId;
+  bool get isOfficialDotId => isValidId && !isTypeMismatch;
 
   const GeminiIdVerificationResult({
     required this.isValidId,
+    this.isTypeMismatch = false,
+    this.isNameMatch = true,
     this.detectedIdType,
     this.extractedName,
     this.extractedIdNumber,
@@ -58,20 +70,24 @@ class GeminiIdVerificationResult {
       isValidId: json['isValidId'] as bool? ??
           json['isOfficialDotId'] as bool? ??
           false,
+      isTypeMismatch: json['isTypeMismatch'] as bool? ?? false,
+      isNameMatch: json['isNameMatch'] as bool? ?? true,
       detectedIdType: json['detectedIdType'] as String?,
       extractedName: json['extractedName'] as String?,
       extractedIdNumber: json['extractedIdNumber'] as String?,
       accreditationType: json['accreditationType'] as String?,
       expiryDate: json['expiryDate'] as String?,
-      isExpired: json['isExpired'] as bool? ?? true,
-      isImageClear: json['isImageClear'] as bool? ?? false,
+      isExpired: json['isExpired'] as bool? ?? false,
+      isImageClear: json['isImageClear'] as bool? ?? true,
       failureReason: json['failureReason'] as String?,
     );
   }
 
-  factory GeminiIdVerificationResult.failed(String reason) {
+  factory GeminiIdVerificationResult.failed(String reason, {bool isTypeMismatch = false}) {
     return GeminiIdVerificationResult(
       isValidId: false,
+      isTypeMismatch: isTypeMismatch,
+      isNameMatch: false,
       isExpired: true,
       isImageClear: false,
       failureReason: reason,
@@ -79,62 +95,58 @@ class GeminiIdVerificationResult {
   }
 }
 
-/// Service for verifying Philippine government-issued IDs using Google Gemini Vision API.
+/// Service for verifying Tour Guide IDs using Google Gemini Vision API.
 ///
-/// Accepts any of the 9 supported Philippine ID types (REV-001 Step 7):
-/// - Barangay ID / Barangay Clearance with Photo
-/// - Philippine National ID (PhilID / ePhilID)
-/// - Driver's License (LTO)
-/// - Philippine Passport (DFA)
-/// - UMID / SSS / GSIS ID
-/// - Postal ID (PhilPost)
-/// - Voter's ID / Comelec Certificate
-/// - PRC ID (Professional Regulation Commission)
-/// - DOT Tour Guide Accreditation ID
+/// Strictly distinguishes between:
+/// 1. "DOT Tour Guide ID" (Department of Tourism Accredited Tour Guide ID)
+/// 2. "Barangay ID" (Barangay Local Government ID Card with Photo)
 class GeminiVisionService {
   GeminiVisionService._();
 
-  /// Builds the Gemini verification prompt for a specific [idType].
-  /// Step 9 — Updated to recognize and validate expanded Philippine ID types.
-  static String _buildVerificationPrompt(String idType) {
+  /// Builds the Gemini verification prompt for [idType] and optional [expectedName].
+  static String _buildVerificationPrompt(String idType, {String? expectedName}) {
+    final nameInstruction = expectedName != null && expectedName.trim().isNotEmpty
+        ? 'The user is registering as a Tour Guide with the declared name: "$expectedName".'
+        : '';
+
     return '''
-You are an AI ID verification system for Philippine government-issued identification documents.
-The user has declared that they are submitting a: "$idType".
+You are an AI verification system for Tour Guide registration in the Philippines.
+$nameInstruction
+The user selected the following ID type: "$idType".
 
-Supported Philippine IDs that you MUST recognize and accept:
-1. Barangay ID / Barangay Clearance with Photo
-2. Philippine National ID (PhilID / ePhilID)
-3. Driver's License (LTO)
-4. Philippine Passport (DFA)
-5. UMID / SSS / GSIS ID
-6. Postal ID (PhilPost)
-7. Voter's ID / Comelec Certificate
-8. PRC ID (Professional Regulation Commission)
-9. DOT Tour Guide Accreditation ID
+Allowed Tour Guide ID categories:
+1. "DOT Tour Guide ID": Official Department of Tourism (DOT) Tour Guide Accreditation ID card.
+2. "Barangay ID": Official Barangay Government-issued ID card with photo.
 
-Analyze the uploaded image and perform the following checks IN ORDER:
+Analyze the uploaded image and perform the following checks:
 
-1. **ID Type Detection**: Confirm whether the uploaded image matches the declared type ("$idType") or is at least one of the 9 supported Philippine IDs listed above.
-   - Set "isValidId" to true ONLY if it is a valid, recognizable Philippine government or local government ID from the list above.
-   - Set "detectedIdType" to the actual ID type you detected (e.g. "Barangay ID", "Philippine National ID").
-   - If the image is NOT an ID at all (e.g. selfie, random document), set isValidId to false.
+1. **ID Type Matching**:
+   - Determine what document was uploaded.
+   - If selected "$idType" is "DOT Tour Guide ID":
+     The uploaded image MUST be an official Department of Tourism (DOT) Tour Guide Accreditation ID card. If the user uploaded a Barangay ID, Driver's License, or other document, set "isTypeMismatch": true, "isValidId": false, and "failureReason": "The uploaded ID does not match the selected ID type."
+   - If selected "$idType" is "Barangay ID" or contains "Barangay":
+     The uploaded image MUST be an official Barangay ID card with photo issued by a Philippine Barangay. A paper Barangay Clearance or certificate without photo is NOT accepted; it must be an official photo ID card. If the user uploaded a DOT ID, driver's license, passport, or other document, set "isTypeMismatch": true, "isValidId": false, and "failureReason": "The uploaded ID does not match the selected ID type."
+   - If the image is not a valid Philippine ID at all (e.g. selfie, receipt, random screenshot), set "isValidId": false, "isTypeMismatch": false, and "failureReason": "The uploaded image is not a recognized ID document."
 
-2. **Data Extraction**: Extract as much of the following as visible on the card:
-   - Full Name of the ID holder
-   - ID Number / Reference Number
-   - Expiry Date (if present — not all Philippine IDs have expiry dates; set to null if absent)
-   - Accreditation Type (only applicable to DOT Tour Guide IDs; null for others)
+2. **Name Matching**:
+   - Extract the name on the ID.
+   - If an expected name was provided ("$expectedName"), compare it with the name on the ID.
+   - If the first or last name clearly does not match, set "isNameMatch": false and "failureReason": "The name on the ID does not match your registered name."
+   - Otherwise set "isNameMatch": true.
 
-3. **Expiry Check**: If an expiry date is shown, determine if the ID has expired. If no expiry date is visible, set "isExpired" to false.
+3. **Readability & Image Quality**:
+   - Check if the image is clear and readable.
+   - If the image is too blurry, cropped, dark, or glaring so text cannot be examined, set "isImageClear": false and "failureReason": "The uploaded ID image is blurry or unreadable. Please upload a clear photo."
 
-4. **Image Quality**: Check if the uploaded image is:
-   - Clear and readable (not blurry)
-   - Complete (not cropped, all four edges visible)
-   - Well-lit (text and photo are legible)
+4. **Expiry Check**:
+   - Check if an expiry date is visible and whether it has passed. If expired, set "isExpired": true and "failureReason": "The uploaded ID has expired."
+   - If no expiry date is shown (common on Barangay documents), set "isExpired": false.
 
-Respond ONLY with a valid JSON object (no markdown, no code fences, no extra text) in exactly this format:
+Respond ONLY with a valid JSON object in exactly this format:
 {
   "isValidId": true/false,
+  "isTypeMismatch": true/false,
+  "isNameMatch": true/false,
   "detectedIdType": "string or null",
   "extractedName": "string or null",
   "extractedIdNumber": "string or null",
@@ -144,21 +156,19 @@ Respond ONLY with a valid JSON object (no markdown, no code fences, no extra tex
   "isImageClear": true/false,
   "failureReason": "string explaining failure or null if all checks pass"
 }
-
-If the image is not a valid Philippine government ID, set isValidId to false and provide a clear failureReason.
 ''';
   }
 
-  /// Verifies a Philippine government-issued ID image using Google Gemini Vision API.
+  /// Verifies a Tour Guide ID image using Google Gemini Vision API.
   ///
-  /// [imageBytes] - The raw bytes of the uploaded ID image.
-  /// [idType]     - The declared ID type selected by the user (Step 8).
-  /// [mimeType]   - The MIME type of the image (e.g. 'image/jpeg', 'image/png').
-  ///
-  /// Returns a [GeminiIdVerificationResult] with the verification outcome.
+  /// [imageBytes]   - The raw bytes of the uploaded ID image.
+  /// [idType]       - "DOT Tour Guide ID" or "Barangay ID".
+  /// [expectedName] - Optional full name of the registering user for name cross-validation.
+  /// [mimeType]     - The MIME type of the image (e.g. 'image/jpeg', 'image/png').
   static Future<GeminiIdVerificationResult> verifyTourGuideId(
     Uint8List imageBytes, {
-    String idType = 'Philippine Government ID',
+    String idType = 'DOT Tour Guide ID',
+    String? expectedName,
     String mimeType = 'image/jpeg',
   }) async {
     final apiKey = AppConfig.geminiApiKey;
@@ -169,7 +179,7 @@ If the image is not a valid Philippine government ID, set isValidId to false and
     }
 
     final base64Image = base64Encode(imageBytes);
-    final prompt = _buildVerificationPrompt(idType);
+    final prompt = _buildVerificationPrompt(idType, expectedName: expectedName);
 
     final candidateModels = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
