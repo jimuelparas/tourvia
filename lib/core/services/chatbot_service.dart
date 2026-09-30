@@ -128,7 +128,10 @@ RESPONSE FORMATTING (Gemini Design Style):
 
     final candidateModels = [
       'gemini-3.6-flash',
-      'gemini-2.5-flash',
+      'gemini-3.8-flash',
+      'gemini-flash-latest',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
     ];
 
     // Build the contents array from chat history for conversation context (max 20 messages)
@@ -219,8 +222,9 @@ RESPONSE FORMATTING (Gemini Design Style):
               return text.trim();
             }
           }
-        } else if (response.statusCode == 429) {
-          lastError = 'Rate limit reached on $model. Trying next available model...';
+        } else if (response.statusCode == 429 || response.statusCode == 503 || response.statusCode == 404) {
+          // Retry with next model (429=rate limit, 503=overloaded, 404=deprecated)
+          lastError = 'Model $model unavailable (${response.statusCode}). Trying next...';
           continue;
         } else if (response.statusCode == 400 || response.statusCode == 403) {
           final err = jsonDecode(response.body);

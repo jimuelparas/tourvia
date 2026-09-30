@@ -323,11 +323,8 @@ class _AuthGateState extends State<AuthGate> {
 
         // If a Firebase user exists, it's a Tour Guide
         if (snapshot.hasData && snapshot.data != null) {
-          // Start SOS monitoring for the tour guide session
-          SosNotificationService.instance.startWatching(
-            sessionId: snapshot.data!.uid,
-            currentUserId: snapshot.data!.uid,
-          );
+          // SOS monitoring is started by TourGuideHomeScreen once the
+          // active tour ID is known (not the guide's UID).
           return const TourGuideDashboardScreen();
         }
 

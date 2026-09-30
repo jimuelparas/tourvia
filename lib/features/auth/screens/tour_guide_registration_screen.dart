@@ -284,8 +284,11 @@ class _TourGuideRegistrationScreenState
     try {
       final isDot = _selectedIdType == 'DOT Tour Guide ID';
       final mimeType = _selectedIdImage?.mimeType ?? 'image/jpeg';
+      final middlePart = _middleNameCtrl.text.trim().isNotEmpty
+          ? ' ${_middleNameCtrl.text.trim()} '
+          : ' ';
       final registeredFullName =
-          '${_firstNameCtrl.text.trim()} ${_lastNameCtrl.text.trim()}';
+          '${_firstNameCtrl.text.trim()}$middlePart${_lastNameCtrl.text.trim()}';
 
       // Verify with Gemini Vision AI against selected ID type and registered name
       final result = await GeminiVisionService.verifyTourGuideId(
@@ -300,6 +303,17 @@ class _TourGuideRegistrationScreenState
 
       if (!result.isVerified) {
         setState(() => _isSubmitting = false);
+
+        // Don't count server-side errors (503 overload) against lockout attempts
+        final isServerError = result.failureReason != null &&
+            result.failureReason!.contains('high demand');
+        if (isServerError) {
+          _showVerificationFailedDialog(
+            '${result.failureReason}\n\nThis does not count as a failed attempt. Please try again shortly.',
+          );
+          return;
+        }
+
         final lockoutStatus =
             await LockoutService.recordFailure(LockoutType.guideRegistration);
         if (!mounted) return;

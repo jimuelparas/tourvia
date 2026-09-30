@@ -61,11 +61,7 @@ class TourGuideMapScreen extends StatefulWidget {
   final String sessionId;
   final String? tourId;
 
-  const TourGuideMapScreen({
-    super.key,
-    required this.sessionId,
-    this.tourId,
-  });
+  const TourGuideMapScreen({super.key, required this.sessionId, this.tourId});
 
   String get effectiveTourId =>
       (tourId != null && tourId!.isNotEmpty) ? tourId! : sessionId;
@@ -168,9 +164,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
         ).listen((pos) {
           if (mounted) {
             final newPos = LatLng(pos.latitude, pos.longitude);
-            setState(
-              () => _guidePosition = newPos,
-            );
+            setState(() => _guidePosition = newPos);
             if (navIsNavigating) {
               updateNavForUserPosition(
                 currentPosition: newPos,
@@ -181,18 +175,19 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
         });
 
     // 1. Listen to all approved tourists in this tour (Source of Truth for Membership)
-    _rosterSubscription =
-        TourService.watchApprovedTourists(effectiveId).listen((roster) {
-          if (!mounted) return;
-          setState(() {
-            _roster = roster;
-            _syncSelectedTourist();
-          });
+    _rosterSubscription = TourService.watchApprovedTourists(effectiveId).listen(
+      (roster) {
+        if (!mounted) return;
+        setState(() {
+          _roster = roster;
+          _syncSelectedTourist();
         });
+      },
+    );
 
     // 2. Listen to all live locations in this tour
-    _allLocationsSubscription =
-        LocationService.watchAllLocations(effectiveId).listen((locations) {
+    _allLocationsSubscription = LocationService.watchAllLocations(effectiveId)
+        .listen((locations) {
           if (!mounted) return;
           final map = <String, UserLocation>{};
           for (final loc in locations) {
@@ -209,8 +204,14 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
           if (navIsNavigating && _activeNavTouristId != null) {
             final targetLoc = map[_activeNavTouristId];
             if (targetLoc != null &&
-                RoutingService.isValidCoordinate(targetLoc.latitude, targetLoc.longitude)) {
-              final freshTargetPos = LatLng(targetLoc.latitude, targetLoc.longitude);
+                RoutingService.isValidCoordinate(
+                  targetLoc.latitude,
+                  targetLoc.longitude,
+                )) {
+              final freshTargetPos = LatLng(
+                targetLoc.latitude,
+                targetLoc.longitude,
+              );
               refreshRouteIfNeeded(
                 currentPosition: _guidePosition,
                 newTargetPosition: freshTargetPos,
@@ -230,24 +231,28 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
     for (final member in _roster) {
       seenIds.add(member.touristId);
       final loc = _locationMap[member.touristId];
-      list.add(TouristTrackingItem(
-        touristId: member.touristId,
-        touristName: member.touristName,
-        contactNumber: member.contactNumber,
-        emergencyContact: member.emergencyContact,
-        location: loc,
-      ));
+      list.add(
+        TouristTrackingItem(
+          touristId: member.touristId,
+          touristName: member.touristName,
+          contactNumber: member.contactNumber,
+          emergencyContact: member.emergencyContact,
+          location: loc,
+        ),
+      );
     }
 
     // Also include any tourist from live locations that isn't yet in roster
     for (final loc in _locationMap.values) {
       if (!seenIds.contains(loc.userId)) {
         seenIds.add(loc.userId);
-        list.add(TouristTrackingItem(
-          touristId: loc.userId,
-          touristName: loc.userName,
-          location: loc,
-        ));
+        list.add(
+          TouristTrackingItem(
+            touristId: loc.userId,
+            touristName: loc.userName,
+            location: loc,
+          ),
+        );
       }
     }
 
@@ -286,19 +291,26 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
       case 'status':
         // Outside tourists first, then Safe, then Offline
         list.sort((a, b) {
-          final outA =
-              a.isOutside(_guidePosition) ? 0 : (a.hasLocation ? 1 : 2);
-          final outB =
-              b.isOutside(_guidePosition) ? 0 : (b.hasLocation ? 1 : 2);
+          final outA = a.isOutside(_guidePosition)
+              ? 0
+              : (a.hasLocation ? 1 : 2);
+          final outB = b.isOutside(_guidePosition)
+              ? 0
+              : (b.hasLocation ? 1 : 2);
           final cmp = outA.compareTo(outB);
           return cmp != 0
               ? cmp
-              : a.touristName.toLowerCase().compareTo(b.touristName.toLowerCase());
+              : a.touristName.toLowerCase().compareTo(
+                  b.touristName.toLowerCase(),
+                );
         });
         break;
       default: // 'name'
-        list.sort((a, b) =>
-            a.touristName.toLowerCase().compareTo(b.touristName.toLowerCase()));
+        list.sort(
+          (a, b) => a.touristName.toLowerCase().compareTo(
+            b.touristName.toLowerCase(),
+          ),
+        );
     }
     return list;
   }
@@ -334,10 +346,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
     final items = _trackingItems;
     for (final t in items) {
       try {
-        await LocationService.triggerRing(
-          widget.effectiveTourId,
-          t.touristId,
-        );
+        await LocationService.triggerRing(widget.effectiveTourId, t.touristId);
       } catch (_) {}
     }
     if (mounted) {
@@ -487,9 +496,7 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
     if (!tourist.hasLocation) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Location unavailable for ${tourist.touristName}.',
-          ),
+          content: Text('Location unavailable for ${tourist.touristName}.'),
           backgroundColor: AppColors.warning,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -551,8 +558,9 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
 
     final allItems = _trackingItems;
     final withLoc = allItems.where((t) => t.hasLocation).toList();
-    final outsideCount =
-        withLoc.where((t) => t.isOutside(_guidePosition)).length;
+    final outsideCount = withLoc
+        .where((t) => t.isOutside(_guidePosition))
+        .length;
     final safeCount = withLoc.length - outsideCount;
     final offlineCount = allItems.length - withLoc.length;
 
@@ -637,161 +645,162 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
             ),
           ],
         ),
-      body: Stack(
-        children: [
-          // ── OpenStreetMap ──────────────────────────────────────
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _guidePosition,
-              initialZoom: 14.5,
-              onTap: (_, __) => setState(() => _selectedTourist = null),
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.tourvia.app',
+        body: Stack(
+          children: [
+            // ── OpenStreetMap ──────────────────────────────────────
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: _guidePosition,
+                initialZoom: 14.5,
+                onTap: (_, __) => setState(() => _selectedTourist = null),
               ),
-              CircleLayer(
-                circles: [
-                  CircleMarker(
-                    point: _guidePosition,
-                    radius: 1000,
-                    useRadiusInMeter: true,
-                    color: AppColors.primary.withValues(alpha: 0.10),
-                    borderColor: AppColors.primary.withValues(alpha: 0.4),
-                    borderStrokeWidth: 2,
-                  ),
-                ],
-              ),
-              // In-app navigation polyline (REV-003)
-              buildNavPolylineLayer(),
-              MarkerLayer(
-                markers: [
-                  _mapMarker(
-                    point: _guidePosition,
-                    label: 'You',
-                    icon: Icons.my_location_rounded,
-                    color: AppColors.primary,
-                  ),
-                  ...withLoc.map((t) {
-                    final outside = t.isOutside(_guidePosition);
-                    final selected = _selectedTourist?.touristId == t.touristId;
-                    return _mapMarker(
-                      point: LatLng(
-                        t.location!.latitude,
-                        t.location!.longitude,
-                      ),
-                      label: t.touristName,
-                      icon: outside
-                          ? Icons.warning_rounded
-                          : Icons.person_pin_circle_rounded,
-                      color: outside ? AppColors.error : AppColors.success,
-                      selected: selected,
-                      onTap: () => setState(() => _selectedTourist = t),
-                    );
-                  }),
-                ],
-              ),
-            ],
-          ),
-
-          // ── Safe / Outside / Offline counter bar ─────────────────────────
-          Positioned(
-            key: const ValueKey('tour_guide_status_bar'),
-            top: 12,
-            left: 16,
-            child: SafeArea(
-              child: _buildStatusBar(safeCount, outsideCount, offlineCount),
-            ),
-          ),
-
-          // ── Recenter button ────────────────────────────────────
-          Positioned(
-            key: const ValueKey('tour_guide_recenter_btn'),
-            bottom: _selectedTourist != null ? 200 : 24,
-            right: 16,
-            child: (!navIsNavigating && !navIsLoading)
-                ? FloatingActionButton.small(
-                    heroTag: 'recenter',
-                    tooltip: 'Recenter on my location',
-                    backgroundColor: Colors.white,
-                    onPressed: _recenterOnGuide,
-                    child: const Icon(
-                      Icons.my_location_rounded,
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.tourvia.app',
+                ),
+                CircleLayer(
+                  circles: [
+                    CircleMarker(
+                      point: _guidePosition,
+                      radius: 1000,
+                      useRadiusInMeter: true,
+                      color: AppColors.primary.withValues(alpha: 0.10),
+                      borderColor: AppColors.primary.withValues(alpha: 0.4),
+                      borderStrokeWidth: 2,
+                    ),
+                  ],
+                ),
+                // In-app navigation polyline (REV-003)
+                buildNavPolylineLayer(),
+                MarkerLayer(
+                  markers: [
+                    _mapMarker(
+                      point: _guidePosition,
+                      label: 'You',
+                      icon: Icons.my_location_rounded,
                       color: AppColors.primary,
                     ),
-                  )
-                : const SizedBox.shrink(),
-          ),
+                    ...withLoc.map((t) {
+                      final outside = t.isOutside(_guidePosition);
+                      final selected =
+                          _selectedTourist?.touristId == t.touristId;
+                      return _mapMarker(
+                        point: LatLng(
+                          t.location!.latitude,
+                          t.location!.longitude,
+                        ),
+                        label: t.touristName,
+                        icon: outside
+                            ? Icons.warning_rounded
+                            : Icons.person_pin_circle_rounded,
+                        color: outside ? AppColors.error : AppColors.success,
+                        selected: selected,
+                        onTap: () => setState(() => _selectedTourist = t),
+                      );
+                    }),
+                  ],
+                ),
+              ],
+            ),
 
-          // ── In-App Navigation HUD (REV-003) ─────────────────
-          Positioned(
-            key: const ValueKey('tour_guide_nav_hud'),
-            bottom: 16,
-            left: 16,
-            right: 16,
-            child: SafeArea(
-              child: (navIsNavigating || navIsLoading)
-                  ? buildNavigationHUD(
-                      currentPosition: _guidePosition,
-                      mapController: _mapController,
-                      onRecenter: _recenterOnGuide,
+            // ── Safe / Outside / Offline counter bar ─────────────────────────
+            Positioned(
+              key: const ValueKey('tour_guide_status_bar'),
+              top: 12,
+              left: 16,
+              child: SafeArea(
+                child: _buildStatusBar(safeCount, outsideCount, offlineCount),
+              ),
+            ),
+
+            // ── Recenter button ────────────────────────────────────
+            Positioned(
+              key: const ValueKey('tour_guide_recenter_btn'),
+              bottom: _selectedTourist != null ? 200 : 24,
+              right: 16,
+              child: (!navIsNavigating && !navIsLoading)
+                  ? FloatingActionButton.small(
+                      heroTag: 'recenter',
+                      tooltip: 'Recenter on my location',
+                      backgroundColor: Colors.white,
+                      onPressed: _recenterOnGuide,
+                      child: const Icon(
+                        Icons.my_location_rounded,
+                        color: AppColors.primary,
+                      ),
                     )
                   : const SizedBox.shrink(),
             ),
-          ),
 
-          // ── Selected tourist quick-action card ────────────────
-          Positioned(
-            key: const ValueKey('tour_guide_quick_card'),
-            bottom: 16,
-            left: 16,
-            right: 16,
-            child: (!navIsNavigating && !navIsLoading)
-                ? AnimatedBuilder(
-                    animation: _sheetController,
-                    builder: (context, _) {
-                      final bool isPanelOpen =
-                          _sheetController.isAttached &&
-                          _sheetController.size > 0.05;
-                      final bool isVisible =
-                          _selectedTourist != null && !isPanelOpen;
-                      return IgnorePointer(
-                        ignoring: !isVisible,
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 200),
-                          opacity: isVisible ? 1.0 : 0.0,
-                          child: SafeArea(
-                            child: _selectedTourist != null
-                                ? _buildQuickCard(_selectedTourist!)
-                                : const SizedBox.shrink(),
-                          ),
-                        ),
-                      );
-                    },
-                  )
-                : const SizedBox.shrink(),
-          ),
-
-          // ── Tourist Management Draggable Panel ─────────────────
-          Positioned.fill(
-            key: const ValueKey('tour_guide_panel_positioned'),
-            child: DraggableScrollableSheet(
-              controller: _sheetController,
-              initialChildSize: 0.0,
-              minChildSize: 0.0,
-              maxChildSize: 0.85,
-              snap: true,
-              snapSizes: const [0.0, 0.45, 0.85],
-              builder: (context, scrollCtrl) {
-                return _buildManagementPanel(context, scrollCtrl);
-              },
+            // ── In-App Navigation HUD (REV-003) ─────────────────
+            Positioned(
+              key: const ValueKey('tour_guide_nav_hud'),
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: SafeArea(
+                child: (navIsNavigating || navIsLoading)
+                    ? buildNavigationHUD(
+                        currentPosition: _guidePosition,
+                        mapController: _mapController,
+                        onRecenter: _recenterOnGuide,
+                      )
+                    : const SizedBox.shrink(),
+              ),
             ),
-          ),
-        ],
+
+            // ── Selected tourist quick-action card ────────────────
+            Positioned(
+              key: const ValueKey('tour_guide_quick_card'),
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: (!navIsNavigating && !navIsLoading)
+                  ? AnimatedBuilder(
+                      animation: _sheetController,
+                      builder: (context, _) {
+                        final bool isPanelOpen =
+                            _sheetController.isAttached &&
+                            _sheetController.size > 0.05;
+                        final bool isVisible =
+                            _selectedTourist != null && !isPanelOpen;
+                        return IgnorePointer(
+                          ignoring: !isVisible,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 200),
+                            opacity: isVisible ? 1.0 : 0.0,
+                            child: SafeArea(
+                              child: _selectedTourist != null
+                                  ? _buildQuickCard(_selectedTourist!)
+                                  : const SizedBox.shrink(),
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : const SizedBox.shrink(),
+            ),
+
+            // ── Tourist Management Draggable Panel ─────────────────
+            Positioned.fill(
+              key: const ValueKey('tour_guide_panel_positioned'),
+              child: DraggableScrollableSheet(
+                controller: _sheetController,
+                initialChildSize: 0.0,
+                minChildSize: 0.0,
+                maxChildSize: 0.85,
+                snap: true,
+                snapSizes: const [0.0, 0.45, 0.85],
+                builder: (context, scrollCtrl) {
+                  return _buildManagementPanel(context, scrollCtrl);
+                },
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
     );
   }
 
@@ -932,8 +941,8 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
     final outside = tourist.isOutside(_guidePosition);
     final distText = dist != null
         ? (outside
-            ? '⚠ ${(dist / 1000).toStringAsFixed(2)} km — Outside boundary'
-            : '✅ ${(dist / 1000).toStringAsFixed(2)} km — Safe')
+              ? '⚠ ${(dist / 1000).toStringAsFixed(2)} km — Outside boundary'
+              : '✅ ${(dist / 1000).toStringAsFixed(2)} km — Safe')
         : '📍 Location unavailable';
 
     return Material(
@@ -961,20 +970,20 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
                       (outside
                               ? AppColors.error
                               : (tourist.hasLocation
-                                  ? AppColors.success
-                                  : AppColors.textHint))
+                                    ? AppColors.success
+                                    : AppColors.textHint))
                           .withValues(alpha: 0.12),
                   child: Icon(
                     outside
                         ? Icons.warning_rounded
                         : (tourist.hasLocation
-                            ? Icons.person_rounded
-                            : Icons.location_off_rounded),
+                              ? Icons.person_rounded
+                              : Icons.location_off_rounded),
                     color: outside
                         ? AppColors.error
                         : (tourist.hasLocation
-                            ? AppColors.success
-                            : AppColors.textHint),
+                              ? AppColors.success
+                              : AppColors.textHint),
                     size: 20,
                   ),
                 ),
@@ -998,8 +1007,8 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
                           color: outside
                               ? AppColors.error
                               : (tourist.hasLocation
-                                  ? AppColors.success
-                                  : AppColors.textHint),
+                                    ? AppColors.success
+                                    : AppColors.textHint),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1034,11 +1043,17 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
                     label: (_isStartingNavigation || navIsLoading)
                         ? 'Loading…'
                         : 'Navigate',
-                    color: (tourist.hasLocation && !_isStartingNavigation && !navIsLoading)
+                    color:
+                        (tourist.hasLocation &&
+                            !_isStartingNavigation &&
+                            !navIsLoading)
                         ? AppColors.accent
                         : AppColors.textHint,
                     filled: true,
-                    onTap: (_isStartingNavigation || navIsLoading || !tourist.hasLocation)
+                    onTap:
+                        (_isStartingNavigation ||
+                            navIsLoading ||
+                            !tourist.hasLocation)
                         ? () {}
                         : () => _navigateTo(tourist),
                   ),
@@ -1091,8 +1106,9 @@ class _TourGuideMapScreenState extends State<TourGuideMapScreen>
     final sorted = _sortedTourists;
     final allItems = _trackingItems;
     final withLoc = allItems.where((t) => t.hasLocation).toList();
-    final outsideCount =
-        withLoc.where((t) => t.isOutside(_guidePosition)).length;
+    final outsideCount = withLoc
+        .where((t) => t.isOutside(_guidePosition))
+        .length;
     final offlineCount = allItems.length - withLoc.length;
     final screenWidth = MediaQuery.sizeOf(ctx).width;
 

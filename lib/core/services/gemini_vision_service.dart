@@ -125,14 +125,21 @@ Analyze the uploaded image and perform the following checks:
    - If selected "$idType" is "DOT Tour Guide ID":
      The uploaded image MUST be an official Department of Tourism (DOT) Tour Guide Accreditation ID card. If the user uploaded a Barangay ID, Driver's License, or other document, set "isTypeMismatch": true, "isValidId": false, and "failureReason": "The uploaded ID does not match the selected ID type."
    - If selected "$idType" is "Barangay ID" or contains "Barangay":
-     The uploaded image MUST be an official Barangay ID card with photo issued by a Philippine Barangay. A paper Barangay Clearance or certificate without photo is NOT accepted; it must be an official photo ID card. If the user uploaded a DOT ID, driver's license, passport, or other document, set "isTypeMismatch": true, "isValidId": false, and "failureReason": "The uploaded ID does not match the selected ID type."
+     The uploaded image MUST be a Barangay-issued document from the Philippines. Philippine Barangay IDs have NO standardized national format — each Barangay designs their own. Common legitimate formats include:
+       • A simple paper or cardboard card (often hand-laminated) with a pasted 1x1 or 2x2 photo
+       • A Barangay Clearance or Certificate of Residency WITH a photo of the holder attached
+       • A printed or handwritten card bearing the Barangay name/seal, resident name, address, and Punong Barangay (Captain) signature
+     ALL of these are valid Barangay IDs. Accept them as long as the document shows: (1) a Barangay name or seal, (2) the holder's name, and (3) a photo of the holder (pasted or printed).
+     Only reject if the uploaded image is clearly a completely different type of document (e.g. DOT ID, driver's license, passport, school ID) or not an ID at all.
    - If the image is not a valid Philippine ID at all (e.g. selfie, receipt, random screenshot), set "isValidId": false, "isTypeMismatch": false, and "failureReason": "The uploaded image is not a recognized ID document."
 
-2. **Name Matching**:
+2. **Name Matching (LENIENT)**:
    - Extract the name on the ID.
    - If an expected name was provided ("$expectedName"), compare it with the name on the ID.
-   - If the first or last name clearly does not match, set "isNameMatch": false and "failureReason": "The name on the ID does not match your registered name."
-   - Otherwise set "isNameMatch": true.
+   - Philippine IDs display names in various formats: "LAST, FIRST MIDDLE", "FIRST MIDDLE LAST", "FIRST M. LAST", all uppercase, etc.
+   - Perform a FLEXIBLE match: if the first name AND last name from the expected name both appear anywhere on the ID (regardless of order, casing, abbreviations, or middle name differences), set "isNameMatch": true.
+   - Only set "isNameMatch": false if the first name or last name is COMPLETELY DIFFERENT (not just reordered or abbreviated).
+   - If no expected name was provided, set "isNameMatch": true.
 
 3. **Readability & Image Quality**:
    - Check if the image is clear and readable.
@@ -181,7 +188,7 @@ Respond ONLY with a valid JSON object in exactly this format:
     final base64Image = base64Encode(imageBytes);
     final prompt = _buildVerificationPrompt(idType, expectedName: expectedName);
 
-    final candidateModels = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    final candidateModels = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
     final body = jsonEncode({
       'contents': [
@@ -243,8 +250,8 @@ Respond ONLY with a valid JSON object in exactly this format:
 
           final parsed = jsonDecode(jsonStr) as Map<String, dynamic>;
           return GeminiIdVerificationResult.fromJson(parsed);
-        } else if (response.statusCode == 404 || response.statusCode == 429) {
-          // Try next candidate model
+        } else if (response.statusCode == 404 || response.statusCode == 429 || response.statusCode == 503) {
+          // Try next candidate model (404=not found, 429=rate limit, 503=overloaded)
           continue;
         } else {
           final errBody = jsonDecode(response.body);
@@ -258,11 +265,18 @@ Respond ONLY with a valid JSON object in exactly this format:
       }
     }
 
-    return GeminiIdVerificationResult.failed(
-      lastResponse != null
-          ? 'Gemini API error (${lastResponse.statusCode})'
-          : 'Unable to connect to Gemini Vision service.',
-    );
+    final lastCode = lastResponse?.statusCode;
+    String fallbackMsg;
+    if (lastCode == 503) {
+      fallbackMsg =
+          'The AI verification service is currently experiencing high demand. '
+          'Please wait a moment and try again.';
+    } else if (lastResponse != null) {
+      fallbackMsg = 'Gemini API error ($lastCode)';
+    } else {
+      fallbackMsg = 'Unable to connect to Gemini Vision service.';
+    }
+    return GeminiIdVerificationResult.failed(fallbackMsg);
   }
 
   static String? _extractJson(String raw) {
